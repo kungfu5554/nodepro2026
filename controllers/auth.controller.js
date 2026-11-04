@@ -3,6 +3,53 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { pool } = require('../config/database');
 
+function normalizeFullName(prefix, rawName) {
+  let clean = (rawName || '').trim();
+  const knownPrefixes = ['ผศ.ดร.', 'รศ.ดร.', 'ศ.ดร.', 'ว่าที่ ร.ต.', 'นางสาว', 'ดร.', 'นาย', 'นาง'];
+  for (const p of knownPrefixes) {
+    if (clean.startsWith(p)) {
+      clean = clean.slice(p.length).trim();
+      break;
+    }
+  }
+  const pfx = (prefix || '').trim();
+  return pfx ? `${pfx}${clean}` : clean;
+}
+
+function formatUserPayload(user) {
+  return {
+    id: user.id,
+    citizenId: user.citizen_id,
+    prefix: user.prefix,
+    name: user.name,
+    role: user.role,
+    roleTitle: user.role_title,
+    department: user.department,
+    deptStatus: user.dept_status || 'APPROVED',
+    requestedDepartment: user.requested_department || null,
+    deptRejectReason: user.dept_reject_reason || null,
+    position: user.position,
+    email: user.email,
+    phone: user.phone,
+    employeeId: user.employee_id,
+    signatureUrl: user.signature_url
+  };
+}
+
+// Public endpoint: Get approved departments for registration & dropdowns
+async function getPublicDepartments(req, res, next) {
+  try {
+    const [rows] = await pool.query('SELECT id, name, code FROM departments ORDER BY id ASC');
+    res.status(200).json({
+      status: 'success',
+      message: 'Departments retrieved.',
+      data: rows
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 // Authenticate user credentials and issue JWT
 async function login(req, res, next) {
   try {
@@ -11,7 +58,7 @@ async function login(req, res, next) {
     if (!citizenId || !password) {
       return res.status(400).json({
         status: 'error',
-        message: 'Citizen ID and password are required.',
+        message: 'กรุณากรอกเลขประจำตัวประชาชนและรหัสผ่าน',
         data: null
       });
     }
@@ -24,24 +71,23 @@ async function login(req, res, next) {
     if (rows.length === 0) {
       return res.status(401).json({
         status: 'error',
-        message: 'Invalid citizen ID or password.',
+        message: 'เลขประจำตัวประชาชนหรือรหัสผ่านไม่ถูกต้อง',
         data: null
       });
     }
 
     const user = rows[0];
     const isMatch = await bcrypt.compare(password, user.password).catch(() => false);
-    const isPlainMatch = (password === user.password); // Fallback if plain text seed
+    const isPlainMatch = (password === user.password);
 
     if (!isMatch && !isPlainMatch) {
       return res.status(401).json({
         status: 'error',
-        message: 'Invalid citizen ID or password.',
+        message: 'เลขประจำตัวประชาชนหรือรหัสผ่านไม่ถูกต้อง',
         data: null
       });
     }
 
-    // Generate JWT token
     const tokenPayload = {
       id: user.id,
       citizenId: user.citizen_id,
@@ -58,23 +104,10 @@ async function login(req, res, next) {
 
     res.status(200).json({
       status: 'success',
-      message: 'Login successful.',
+      message: 'เข้าสู่ระบบสำเร็จ',
       data: {
         token,
-        user: {
-          id: user.id,
-          citizenId: user.citizen_id,
-          prefix: user.prefix,
-          name: user.name,
-          role: user.role,
-          roleTitle: user.role_title,
-          department: user.department,
-          position: user.position,
-          email: user.email,
-          phone: user.phone,
-          employeeId: user.employee_id,
-          signatureUrl: user.signature_url
-        }
+        user: formatUserPayload(user)
       }
     });
   } catch (error) {
@@ -82,68 +115,123 @@ async function login(req, res, next) {
   }
 }
 
-// Register candidate (evaluatee)
+// Register candidate (evaluatee) with approved department selection or custom HR request
 async function register(req, res, next) {
   try {
-    const { 
-      citizenId, 
-      username, 
-      employeeId, 
-      email, 
-      phone, 
-      password, 
-      prefix, 
-      name, 
-      fullname, 
-      department, 
-      position, 
+    const {
+      citizenId,
+      username,
+      employeeId,
+      email,
+      phone,
+      password,
+      prefix,
+      name,
+      fullname,
+      department,
+      customDepartment,
+      isCustomDepartment,
+      position,
       signature,
-      signatureUrl 
+      signatureUrl
     } = req.body;
 
     const finalCitizenId = (citizenId || username || '').trim();
-    const finalName = (fullname || name || '').trim();
+    const rawName = (fullname || name || '').trim();
     const finalSignature = signature || signatureUrl || null;
 
     if (!finalCitizenId) {
       return res.status(400).json({
         status: 'error',
-        message: 'Citizen ID / Username is required.',
+        message: 'กรุณากรอกเลขประจำตัวประชาชน',
         data: null
       });
     }
 
-    if (!password || !finalName) {
+    if (!password || String(password).length < 4 || !rawName) {
       return res.status(400).json({
         status: 'error',
-        message: 'Full name and password are required.',
+        message: 'กรุณากรอกชื่อ-นามสกุล และรหัสผ่านอย่างน้อย 4 ตัวอักษร',
         data: null
       });
     }
 
-    // Check duplicate citizen ID or username
+    // Check duplicate citizen ID
     const [existing] = await pool.query('SELECT id FROM users WHERE citizen_id = ?', [finalCitizenId]);
     if (existing.length > 0) {
       return res.status(400).json({
         status: 'error',
-        message: 'This Citizen ID / Username is already registered.',
+        message: 'เลขประจำตัวประชาชนนี้ถูกลงทะเบียนในระบบแล้ว',
         data: null
       });
     }
 
+    // Resolve department vs custom department request to HR
+    let finalDepartment = null;
+    let deptStatus = 'APPROVED';
+    let requestedDepartment = null;
+
+    const wantsCustom = Boolean(isCustomDepartment) || department === '__CUSTOM__' || (customDepartment && String(customDepartment).trim() !== '');
+    if (wantsCustom) {
+      const reqName = String(customDepartment || '').trim();
+      if (!reqName) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'กรุณาระบุชื่อสาขาวิชาที่ต้องการขอเพิ่มให้ฝ่ายบุคลากรอนุมัติ',
+          data: null
+        });
+      }
+      // Check if this department already exists in approved departments
+      const [deptCheck] = await pool.query('SELECT name FROM departments WHERE name = ?', [reqName]);
+      if (deptCheck.length > 0) {
+        finalDepartment = deptCheck[0].name;
+        deptStatus = 'APPROVED';
+        requestedDepartment = null;
+      } else {
+        finalDepartment = null;
+        deptStatus = 'PENDING';
+        requestedDepartment = reqName;
+      }
+    } else {
+      const selDept = String(department || '').trim();
+      if (!selDept) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'กรุณาเลือกสาขาวิชา / แผนกวิชา',
+          data: null
+        });
+      }
+      const [deptCheck] = await pool.query('SELECT name FROM departments WHERE name = ?', [selDept]);
+      if (deptCheck.length > 0) {
+        finalDepartment = deptCheck[0].name;
+        deptStatus = 'APPROVED';
+        requestedDepartment = null;
+      } else {
+        finalDepartment = null;
+        deptStatus = 'PENDING';
+        requestedDepartment = selDept;
+      }
+    }
+
     const hashedPassword = await bcrypt.hash(password, 10);
     const userPrefix = prefix || 'นาย';
-    const completeName = finalName.startsWith(userPrefix) ? finalName : `${userPrefix} ${finalName}`;
+    const completeName = normalizeFullName(userPrefix, rawName);
 
     const [result] = await pool.query(`
-      INSERT INTO users (citizen_id, password, prefix, name, role, role_title, department, position, email, phone, employee_id, signature_url)
-      VALUES (?, ?, ?, ?, 'teacher', 'ผู้รับการประเมิน', ?, ?, ?, ?, ?, ?)
+      INSERT INTO users (
+        citizen_id, password, prefix, name, role, role_title,
+        department, dept_status, requested_department, dept_reject_reason,
+        position, email, phone, employee_id, signature_url
+      )
+      VALUES (?, ?, ?, ?, 'teacher', 'ผู้รับการประเมิน', ?, ?, ?, NULL, ?, ?, ?, ?, ?)
     `, [
-      finalCitizenId, 
-      hashedPassword, 
-      userPrefix, 
-      completeName, 
-      department || 'แผนกวิชาเทคโนโลยีสารสนเทศ', 
+      finalCitizenId,
+      hashedPassword,
+      userPrefix,
+      completeName,
+      finalDepartment,
+      deptStatus,
+      requestedDepartment,
       position || 'ครูผู้ช่วย',
       email || null,
       phone || null,
@@ -151,7 +239,6 @@ async function register(req, res, next) {
       finalSignature
     ]);
 
-    // Issue JWT token on registration so client can login immediately
     const token = jwt.sign(
       {
         id: result.insertId,
@@ -164,25 +251,16 @@ async function register(req, res, next) {
       { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
     );
 
+    const [createdRows] = await pool.query('SELECT * FROM users WHERE id = ?', [result.insertId]);
+
     res.status(201).json({
       status: 'success',
-      message: 'Registration successful.',
+      message: deptStatus === 'PENDING'
+        ? 'ลงทะเบียนสำเร็จ คำขอเพิ่มสาขาวิชาใหม่ถูกส่งให้ฝ่ายบุคลากร (HR) พิจารณาอนุมัติแล้ว'
+        : 'ลงทะเบียนสำเร็จ',
       data: {
         token,
-        user: {
-          id: result.insertId,
-          citizenId: finalCitizenId,
-          prefix: userPrefix,
-          name: completeName,
-          role: 'teacher',
-          roleTitle: 'ผู้รับการประเมิน',
-          department: department || 'แผนกวิชาเทคโนโลยีสารสนเทศ',
-          position: position || 'ครูผู้ช่วย',
-          email: email || null,
-          phone: phone || null,
-          employeeId: employeeId || null,
-          signatureUrl: finalSignature
-        }
+        user: formatUserPayload(createdRows[0])
       }
     });
   } catch (error) {
@@ -193,15 +271,12 @@ async function register(req, res, next) {
 // Retrieve authenticated user profile
 async function getProfile(req, res, next) {
   try {
-    const [rows] = await pool.query(`
-      SELECT id, citizen_id AS citizenId, prefix, name, role, role_title AS roleTitle, department, position, email, phone, employee_id AS employeeId, signature_url AS signatureUrl
-      FROM users WHERE id = ?
-    `, [req.user.id]);
+    const [rows] = await pool.query('SELECT * FROM users WHERE id = ?', [req.user.id]);
 
     if (rows.length === 0) {
       return res.status(404).json({
         status: 'error',
-        message: 'User profile not found.',
+        message: 'ไม่พบข้อมูลผู้ใช้งาน',
         data: null
       });
     }
@@ -209,25 +284,91 @@ async function getProfile(req, res, next) {
     res.status(200).json({
       status: 'success',
       message: 'Profile retrieved successfully.',
-      data: rows[0]
+      data: formatUserPayload(rows[0])
     });
   } catch (error) {
     next(error);
   }
 }
 
-// Update authenticated user's own profile
+// Update authenticated user's own profile (including department selection or custom request)
 async function updateProfile(req, res, next) {
   try {
     const userId = req.user.id;
-    const { prefix, name, department, position, email, phone, employeeId, signature, signatureUrl, password } = req.body;
+    const [currentRows] = await pool.query('SELECT * FROM users WHERE id = ?', [userId]);
+    if (currentRows.length === 0) {
+      return res.status(404).json({ status: 'error', message: 'ไม่พบข้อมูลผู้ใช้งาน', data: null });
+    }
+    const currentUserRow = currentRows[0];
+
+    const {
+      prefix,
+      name,
+      department,
+      customDepartment,
+      isCustomDepartment,
+      position,
+      email,
+      phone,
+      employeeId,
+      signature,
+      signatureUrl,
+      password
+    } = req.body;
 
     const updates = [];
     const params = [];
 
-    if (prefix !== undefined) { updates.push('prefix = ?'); params.push(prefix); }
-    if (name !== undefined && name.trim()) { updates.push('name = ?'); params.push(name.trim()); }
-    if (department !== undefined) { updates.push('department = ?'); params.push(department); }
+    const effectivePrefix = prefix !== undefined ? prefix : currentUserRow.prefix;
+    if (prefix !== undefined) {
+      updates.push('prefix = ?');
+      params.push(prefix);
+    }
+    if (name !== undefined && String(name).trim() !== '') {
+      updates.push('name = ?');
+      params.push(normalizeFullName(effectivePrefix, name));
+    }
+
+    // Handle department / customDepartment changes
+    const wantsCustom = Boolean(isCustomDepartment) || department === '__CUSTOM__' || (customDepartment && String(customDepartment).trim() !== '');
+    if (wantsCustom) {
+      const reqName = String(customDepartment || '').trim();
+      if (!reqName) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'กรุณาระบุชื่อสาขาวิชาที่ต้องการขอเพิ่ม',
+          data: null
+        });
+      }
+      const [deptCheck] = await pool.query('SELECT name FROM departments WHERE name = ?', [reqName]);
+      if (deptCheck.length > 0) {
+        updates.push('department = ?, dept_status = ?, requested_department = NULL, dept_reject_reason = NULL');
+        params.push(deptCheck[0].name, 'APPROVED');
+      } else if (currentUserRow.role === 'admin' || currentUserRow.role === 'hr') {
+        await pool.query('INSERT IGNORE INTO departments (name) VALUES (?)', [reqName]);
+        updates.push('department = ?, dept_status = ?, requested_department = NULL, dept_reject_reason = NULL');
+        params.push(reqName, 'APPROVED');
+      } else {
+        updates.push('department = NULL, dept_status = ?, requested_department = ?, dept_reject_reason = NULL');
+        params.push('PENDING', reqName);
+      }
+    } else if (department !== undefined && department !== null && String(department).trim() !== '') {
+      const selDept = String(department).trim();
+      if (currentUserRow.role === 'teacher') {
+        const [deptCheck] = await pool.query('SELECT name FROM departments WHERE name = ?', [selDept]);
+        if (deptCheck.length > 0) {
+          updates.push('department = ?, dept_status = ?, requested_department = NULL, dept_reject_reason = NULL');
+          params.push(deptCheck[0].name, 'APPROVED');
+        } else {
+          updates.push('department = NULL, dept_status = ?, requested_department = ?, dept_reject_reason = NULL');
+          params.push('PENDING', selDept);
+        }
+      } else {
+        updates.push('department = ?, dept_status = ?, requested_department = NULL, dept_reject_reason = NULL');
+        params.push(selDept, 'APPROVED');
+      }
+    }
+
     if (position !== undefined) { updates.push('position = ?'); params.push(position); }
     if (email !== undefined) { updates.push('email = ?'); params.push(email); }
     if (phone !== undefined) { updates.push('phone = ?'); params.push(phone); }
@@ -236,7 +377,10 @@ async function updateProfile(req, res, next) {
       updates.push('signature_url = ?');
       params.push(signature || signatureUrl);
     }
-    if (password && password.length >= 4) {
+    if (password && String(password).trim() !== '') {
+      if (String(password).length < 4) {
+        return res.status(400).json({ status: 'error', message: 'รหัสผ่านต้องมีอย่างน้อย 4 ตัวอักษร', data: null });
+      }
       const hashedPassword = await bcrypt.hash(password, 10);
       updates.push('password = ?');
       params.push(hashedPassword);
@@ -247,15 +391,12 @@ async function updateProfile(req, res, next) {
       await pool.query(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, params);
     }
 
-    const [rows] = await pool.query(`
-      SELECT id, citizen_id AS citizenId, prefix, name, role, role_title AS roleTitle, department, position, email, phone, employee_id AS employeeId, signature_url AS signatureUrl
-      FROM users WHERE id = ?
-    `, [userId]);
+    const [rows] = await pool.query('SELECT * FROM users WHERE id = ?', [userId]);
 
     res.status(200).json({
       status: 'success',
-      message: 'Profile updated successfully.',
-      data: rows[0]
+      message: 'บันทึกข้อมูลส่วนตัวเรียบร้อยแล้ว',
+      data: formatUserPayload(rows[0])
     });
   } catch (error) {
     next(error);
@@ -263,8 +404,11 @@ async function updateProfile(req, res, next) {
 }
 
 module.exports = {
+  getPublicDepartments,
   login,
   register,
   getProfile,
-  updateProfile
+  updateProfile,
+  normalizeFullName,
+  formatUserPayload
 };

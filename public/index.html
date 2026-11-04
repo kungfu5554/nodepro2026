@@ -798,7 +798,7 @@
 
         <div style="text-align: center; margin-top: 14px; font-size: 12.5px; color: var(--text-muted);">
           <span>ยังไม่มีบัญชีผู้รับการประเมิน? </span>
-          <button type="button" style="background:none; border:none; color:var(--primary); font-weight:600; cursor:pointer;" @click="authMode = 'register'">
+          <button type="button" style="background:none; border:none; color:var(--primary); font-weight:600; cursor:pointer;" @click="switchToRegister">
             ลงทะเบียนบุคลากรใหม่
           </button>
         </div>
@@ -809,7 +809,7 @@
         <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px;">
           <div>
             <h2 class="auth-title">ลงทะเบียนผู้รับการประเมินใหม่</h2>
-            <p class="auth-subtitle">กรอกข้อมูลประวัติการทำงาน สังกัด เบอร์โทรศัพท์ และลายเซ็นดิจิทัล</p>
+            <p class="auth-subtitle">กรอกข้อมูลประวัติการทำงาน เลือกสาขาวิชา เบอร์โทรศัพท์ และลายเซ็นดิจิทัล</p>
           </div>
           <button type="button" class="btn-outline btn-sm" @click="authMode = 'login'">
             <v-icon name="arrow-left" size="13"></v-icon>
@@ -827,7 +827,7 @@
         </div>
 
         <form @submit.prevent="registerUser">
-          <div style="font-weight: 700; font-size: 12px; color: var(--primary); margin-bottom: 8px; text-transform: uppercase;">1. ข้อมูลส่วนตัวและสังกัดหน่วยงาน</div>
+          <div style="font-weight: 700; font-size: 12px; color: var(--primary); margin-bottom: 8px; text-transform: uppercase;">1. ข้อมูลส่วนตัวและสังกัดสาขาวิชา</div>
           <div class="grid-3" style="margin-bottom: 10px;">
             <div>
               <label>คำนำหน้า *</label>
@@ -836,6 +836,7 @@
                 <option value="นาง">นาง</option>
                 <option value="นางสาว">นางสาว</option>
                 <option value="ดร.">ดร.</option>
+                <option value="ผศ.ดร.">ผศ.ดร.</option>
               </select>
             </div>
             <div>
@@ -849,12 +850,24 @@
           </div>
           <div class="grid-2" style="margin-bottom: 10px;">
             <div>
-              <label>แผนกวิชา / ฝ่ายงาน *</label>
-              <input v-model="regForm.department" placeholder="เช่น แผนกวิชาเทคโนโลยีสารสนเทศ" required />
+              <label>สาขาวิชา / แผนกวิชา *</label>
+              <select v-model="regForm.departmentSelect" required>
+                <option value="" disabled>-- เลือกสาขาวิชา / แผนกวิชา --</option>
+                <option v-for="d in publicDepartments" :key="d.id" :value="d.name">{{ d.name }}</option>
+                <option value="__CUSTOM__">+ เพิ่มสาขาวิชาเอง (ส่งคำขอให้ฝ่ายบุคลากร HR อนุมัติ)</option>
+              </select>
             </div>
             <div>
               <label>ตำแหน่งปัจจุบัน *</label>
               <input v-model="regForm.position" placeholder="เช่น ครู คศ.1" required />
+            </div>
+          </div>
+          <div v-if="regForm.departmentSelect === '__CUSTOM__'" style="margin-bottom: 12px; padding: 10px 12px; background: #fffbeb; border: 1px solid #fcd34d; border-radius: var(--radius-sm);">
+            <label style="color: #92400e; font-weight: 700;">ระบุชื่อสาขาวิชาใหม่ที่ต้องการขอเพิ่ม *</label>
+            <input v-model="regForm.customDepartment" placeholder="เช่น แผนกวิชาอิเล็กทรอนิกส์" required style="margin-top: 4px; background: #fff;" />
+            <div style="font-size: 11.5px; color: #b45309; margin-top: 5px; display: flex; align-items: center; gap: 5px;">
+              <v-icon name="clock" size="13"></v-icon>
+              <span>หมายเหตุ: การขอเพิ่มสาขาวิชาใหม่จะต้องรอฝ่ายบุคลากร (HR) อนุมัติก่อน จึงจะสามารถส่งข้อมูลแบบประเมินให้กรรมการได้</span>
             </div>
           </div>
           <div class="grid-2" style="margin-bottom: 12px;">
@@ -969,6 +982,18 @@
       <!-- 2.1 UNIFIED ADMIN & HR DASHBOARD -->
       <!-- ============================================================== -->
       <div v-if="currentUser.role === 'admin' || currentUser.role === 'hr'" class="container">
+        <!-- Pending Department Requests Alert Banner -->
+        <div v-if="pendingDepartmentRequests.length > 0" style="background: #fffbeb; border: 1px solid #f59e0b; border-left: 4px solid #d97706; border-radius: var(--radius-sm); padding: 10px 14px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+          <div style="display: flex; align-items: center; gap: 8px; color: #92400e;">
+            <v-icon name="alert" size="18"></v-icon>
+            <span><strong>แจ้งเตือนฝ่ายบุคลากร (HR):</strong> มีคำขอเพิ่มสาขาวิชาใหม่จากผู้รับการประเมินรอการอนุมัติ จำนวน <strong>{{ pendingDepartmentRequests.length }} รายการ</strong></span>
+          </div>
+          <button type="button" class="btn-primary btn-sm" style="background: #d97706;" @click="adminTab = 'assign'">
+            <v-icon name="check-circle" size="12"></v-icon>
+            <span>ไปที่หน้าพิจารณาอนุมัติ</span>
+          </button>
+        </div>
+
         <!-- Sub-navigation tabs (5 tabs) -->
         <div class="sub-nav">
           <button :class="{ active: adminTab === 'users' }" @click="adminTab = 'users'">
@@ -986,6 +1011,9 @@
           <button :class="{ active: adminTab === 'assign' }" @click="adminTab = 'assign'">
             <v-icon name="target" size="14"></v-icon>
             <span>4. สาขาวิชาและกรรมการประจำสาขา</span>
+            <span v-if="pendingDepartmentRequests.length > 0" style="background:#dc2626; color:#fff; border-radius:999px; padding:1px 7px; font-size:11px; font-weight:700; margin-left:4px;">
+              {{ pendingDepartmentRequests.length }}
+            </span>
           </button>
           <button :class="{ active: adminTab === 'track' }" @click="adminTab = 'track'">
             <v-icon name="bar-chart" size="14"></v-icon>
@@ -1028,7 +1056,7 @@
                     <th width="40">ลำดับ</th>
                     <th width="140">เลขประจำตัวประชาชน</th>
                     <th>ชื่อ - นามสกุล</th>
-                    <th>สังกัด / แผนกวิชา</th>
+                    <th>สังกัด / สาขาวิชา</th>
                     <th width="110">บทบาท</th>
                     <th width="100">รหัสผ่าน</th>
                     <th width="140" style="text-align: right;">จัดการ</th>
@@ -1038,8 +1066,17 @@
                   <tr v-for="(u, idx) in filteredUsers" :key="u.id">
                     <td>{{ idx + 1 }}</td>
                     <td><strong>{{ u.citizenId }}</strong></td>
-                    <td>{{ u.prefix }} {{ u.name }}</td>
-                    <td>{{ u.department || '-' }}</td>
+                    <td>{{ formatUserDisplayName(u) }}</td>
+                    <td>
+                      <div v-if="u.deptStatus === 'PENDING'" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                        <span class="tag yellow"><v-icon name="clock" size="11"></v-icon> รออนุมัติ: {{ u.requestedDepartment }}</span>
+                        <button type="button" class="btn-sm" style="height:22px; font-size:11px; padding:0 7px;" @click="adminTab = 'assign'">พิจารณา</button>
+                      </div>
+                      <div v-else-if="u.deptStatus === 'REJECTED'">
+                        <span class="tag red"><v-icon name="alert" size="11"></v-icon> ไม่อนุมัติ: {{ u.requestedDepartment }}</span>
+                      </div>
+                      <span v-else>{{ u.department || '-' }}</span>
+                    </td>
                     <td>
                       <span :class="['tag', u.role === 'admin' ? 'red' : (u.role === 'hr' ? 'yellow' : (u.role === 'judge' ? 'blue' : 'green'))]">
                         {{ u.roleTitle }}
@@ -1053,7 +1090,7 @@
                       <button class="btn-sm btn-key" @click="openAccountModal(u)" title="เปลี่ยนรหัสผ่าน">
                         <v-icon name="key" size="12"></v-icon>
                       </button>
-                      <button class="btn-sm btn-del" @click="deleteUser(u.id)" title="ลบผู้ใช้">
+                      <button class="btn-sm btn-del" @click="deleteUser(u.citizenId)" title="ลบผู้ใช้">
                         <v-icon name="trash" size="12"></v-icon>
                       </button>
                     </td>
@@ -1117,9 +1154,12 @@
           <div class="page-header">
             <div>
               <h2><v-icon name="target" size="18"></v-icon> ตัวชี้วัดและเกณฑ์คะแนนประเมิน (Evaluation Metrics)</h2>
-              <p>กำหนดตัวชี้วัด ค่าน้ำหนัก และรูปแบบหลักฐาน</p>
+              <p>กำหนดตัวชี้วัดสำหรับรอบ: <strong>{{ period.name }}</strong></p>
             </div>
-            <div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <select v-model="selectedAdminPeriodId" @change="onAdminPeriodSelectChange" style="width: auto; min-width: 240px; height: 32px; font-size: 12px;">
+                <option v-for="p in allPeriods" :key="p.id" :value="p.id">{{ p.name }}</option>
+              </select>
               <span :class="['tag', totalMetricWeight === 100 ? 'green' : 'red']" style="font-size: 12px; padding: 4px 10px;">
                 <v-icon :name="totalMetricWeight === 100 ? 'check-circle' : 'alert'" size="13"></v-icon>
                 ผลรวมค่าน้ำหนัก: {{ totalMetricWeight }} / 100%
@@ -1204,12 +1244,76 @@
           </div>
         </div>
 
-        <!-- Tab 4: Departments & Department Judges -->
+        <!-- Tab 4: Departments, Custom Department Requests & Department Judges -->
         <div v-if="adminTab === 'assign'">
           <div class="page-header">
             <div>
-              <h2><v-icon name="target" size="18"></v-icon> สาขาวิชาและคณะกรรมการประจำสาขาวิชา</h2>
-              <p>กำหนดสาขาวิชา/แผนก และแต่งตั้งกรรมการประจำสาขาวิชา (กรรมการสามารถประเมินครูทุกคนในสาขาที่ได้รับมอบหมายได้พร้อมกัน)</p>
+              <h2><v-icon name="target" size="18"></v-icon> สาขาวิชา คำขออนุมัติสาขาวิชา และคณะกรรมการประจำสาขา</h2>
+              <p>พิจารณาคำขอเพิ่มสาขาวิชาใหม่จากบุคลากร กำหนดสาขาวิชา และแต่งตั้งกรรมการประจำสาขาวิชา</p>
+            </div>
+          </div>
+
+          <!-- Section 0: Pending Custom Department Requests from Personnel -->
+          <div class="card" style="margin-bottom: 16px; border: 1px solid #fcd34d;">
+            <div class="card-title" style="color: #b45309; display: flex; justify-content: space-between; align-items: center;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <v-icon name="clock" size="15"></v-icon>
+                <span>คำขอเพิ่มสาขาวิชาใหม่จากบุคลากร (รอฝ่ายบุคลากร HR พิจารณาอนุมัติ)</span>
+              </div>
+              <span :class="['tag', pendingDepartmentRequests.length > 0 ? 'yellow' : 'green']">
+                รออนุมัติ {{ pendingDepartmentRequests.length }} รายการ
+              </span>
+            </div>
+
+            <div class="table-wrap">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th width="40">ลำดับ</th>
+                    <th>ชื่อ - นามสกุล ผู้ขอ</th>
+                    <th>ข้อมูลติดต่อ</th>
+                    <th>สาขาวิชาที่ขอเพิ่มใหม่</th>
+                    <th width="130">รหัสสาขา (ถ้ามี)</th>
+                    <th width="210" style="text-align: right;">การพิจารณาของ HR</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(reqItem, idx) in pendingDepartmentRequests" :key="reqItem.id">
+                    <td>{{ idx + 1 }}</td>
+                    <td>
+                      <strong>{{ reqItem.name }}</strong>
+                      <div style="font-size: 11px; color: var(--text-muted);">เลขบัตร: {{ reqItem.citizenId }} | {{ reqItem.position || 'ครูผู้ช่วย' }}</div>
+                    </td>
+                    <td style="font-size: 11.5px;">
+                      <div>{{ reqItem.phone || '-' }}</div>
+                      <div style="color: var(--text-muted);">{{ reqItem.email || '' }}</div>
+                    </td>
+                    <td>
+                      <span class="tag yellow" style="font-size: 12.5px; padding: 4px 10px;">
+                        {{ reqItem.requestedDepartment }}
+                      </span>
+                    </td>
+                    <td>
+                      <input v-model="approveDeptCodes[reqItem.id]" placeholder="เช่น ELEC" style="height: 28px; font-size: 12px;" />
+                    </td>
+                    <td style="text-align: right; white-space: nowrap;">
+                      <button type="button" class="btn-success btn-sm" style="margin-right: 6px;" @click="approveDepartmentRequest(reqItem)">
+                        <v-icon name="check" size="12"></v-icon>
+                        <span>อนุมัติสาขา</span>
+                      </button>
+                      <button type="button" class="btn-sm btn-del" @click="openRejectDeptModal(reqItem)">
+                        <v-icon name="close" size="12"></v-icon>
+                        <span>ไม่อนุมัติ</span>
+                      </button>
+                    </td>
+                  </tr>
+                  <tr v-if="pendingDepartmentRequests.length === 0">
+                    <td colspan="6" style="text-align: center; padding: 14px; color: var(--text-muted);">
+                      ไม่มีคำขอเพิ่มสาขาวิชาใหม่ที่รอการอนุมัติในขณะนี้
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
 
@@ -1452,6 +1556,67 @@
           </div>
         </div>
 
+        <!-- Department Approval / Rejection Status Cards for Teacher -->
+        <div v-if="currentUser.deptStatus === 'PENDING'" style="background: #fffbeb; border: 2px solid #f59e0b; border-radius: var(--radius); padding: 14px 16px; margin-bottom: 14px;">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap;">
+            <div style="display: flex; gap: 10px; align-items: flex-start;">
+              <v-icon name="clock" size="20" style="color: #d97706; flex-shrink: 0; margin-top: 2px;"></v-icon>
+              <div>
+                <strong style="font-size: 14px; color: #92400e;">คำขอเพิ่มสาขาวิชาใหม่กำลังรอการอนุมัติจากฝ่ายบุคลากร (HR)</strong>
+                <div style="font-size: 12.5px; color: #78350f; margin-top: 3px;">
+                  สาขาวิชาที่ขอเพิ่ม: <strong>"{{ currentUser.requestedDepartment }}"</strong> — ท่านจะสามารถส่งข้อมูลแบบประเมินตนเองให้คณะกรรมการได้เมื่อฝ่ายบุคลากร (HR) อนุมัติสาขาวิชาเรียบร้อยแล้ว
+                </div>
+              </div>
+            </div>
+            <div style="display: flex; gap: 6px;">
+              <button type="button" class="btn-outline btn-sm" @click="loadTeacherEvaluationSheet(selectedPeriodId)">
+                <v-icon name="search" size="12"></v-icon>
+                <span>ตรวจสอบสถานะล่าสุด</span>
+              </button>
+              <button type="button" class="btn-sm" @click="openProfileModal">
+                <v-icon name="edit" size="12"></v-icon>
+                <span>เปลี่ยนไปเลือกสาขาวิชาที่มีอยู่</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div v-else-if="currentUser.deptStatus === 'REJECTED'" style="background: #fef2f2; border: 2px solid #dc2626; border-radius: var(--radius); padding: 16px; margin-bottom: 14px;">
+          <div style="display: flex; gap: 10px; align-items: flex-start; margin-bottom: 12px;">
+            <v-icon name="alert" size="22" style="color: #dc2626; flex-shrink: 0; margin-top: 2px;"></v-icon>
+            <div style="flex: 1;">
+              <strong style="font-size: 14.5px; color: #991b1b;">คำขอเพิ่มสาขาวิชา "{{ currentUser.requestedDepartment }}" ไม่ได้รับการอนุมัติจากฝ่ายบุคลากร (HR)</strong>
+              <div style="background: #fff; border: 1px solid #fecaca; border-left: 4px solid #dc2626; border-radius: 4px; padding: 8px 12px; margin-top: 6px; font-size: 13px; color: #7f1d1d;">
+                <strong>เหตุผลที่ไม่อนุมัติจาก HR:</strong> {{ currentUser.deptRejectReason || 'กรุณาเลือกสาขาวิชาที่เปิดสอนในระบบ' }}
+              </div>
+            </div>
+          </div>
+
+          <div style="background: #ffffff; border: 1px solid #fca5a5; border-radius: var(--radius-sm); padding: 12px;">
+            <div style="font-weight: 700; font-size: 13px; color: #991b1b; margin-bottom: 8px;">กรุณาเลือกสาขาวิชาใหม่อีกครั้งเพื่อดำเนินการส่งแบบประเมิน:</div>
+            <div class="grid-3" style="align-items: end; gap: 10px;">
+              <div :style="{ gridColumn: reselectDeptForm.departmentSelect === '__CUSTOM__' ? 'span 1' : 'span 2' }">
+                <label>เลือกสาขาวิชา *</label>
+                <select v-model="reselectDeptForm.departmentSelect">
+                  <option value="" disabled>-- เลือกสาขาวิชาที่มีในระบบ (อนุมัติทันที) --</option>
+                  <option v-for="d in publicDepartments" :key="d.id" :value="d.name">{{ d.name }}</option>
+                  <option value="__CUSTOM__">+ ขอเพิ่มสาขาวิชาใหม่อีกครั้ง (ส่งให้ HR พิจารณา)</option>
+                </select>
+              </div>
+              <div v-if="reselectDeptForm.departmentSelect === '__CUSTOM__'">
+                <label>ชื่อสาขาวิชาใหม่ที่ต้องการขอ *</label>
+                <input v-model="reselectDeptForm.customDepartment" placeholder="ระบุชื่อสาขาวิชา..." />
+              </div>
+              <div>
+                <button type="button" class="btn-primary" style="width: 100%;" @click="submitReselectDepartment">
+                  <v-icon name="check-circle" size="14"></v-icon>
+                  <span>ยืนยันการเลือกสาขาวิชาใหม่</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Teacher Tabs: Self Evaluation vs Judge Results -->
         <div class="sub-nav">
           <button :class="{ active: teacherTab === 'self' }" @click="teacherTab = 'self'">
@@ -1466,25 +1631,38 @@
 
         <!-- Teacher Tab 1: Self Evaluation Form -->
         <div v-if="teacherTab === 'self'" class="card">
-          <!-- Submission Status Banner -->
-          <div v-if="teacherSubmissionStatus === 'SUBMITTED'" class="alert success" style="margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center;">
+          <!-- RED WARNING BANNER WHEN IN EDIT MODE AFTER SUBMISSION -->
+          <div v-if="teacherSubmissionStatus === 'SUBMITTED' && isEditingSelfEval" style="background: #fef2f2; border: 2px solid #dc2626; color: #991b1b; border-radius: var(--radius-sm); padding: 12px 14px; margin-bottom: 14px; display: flex; align-items: flex-start; gap: 10px;">
+            <v-icon name="alert" size="20" style="color: #dc2626; flex-shrink: 0; margin-top: 2px;"></v-icon>
+            <div>
+              <strong style="font-size: 13.5px; color: #b91c1c;">คำเตือนสำคัญ: กำลังอยู่ในโหมดขอแก้ไขข้อมูลแบบประเมิน</strong>
+              <div style="font-size: 12.5px; margin-top: 3px; line-height: 1.45;">
+                หากท่านกดปุ่ม <strong>"ยืนยันการแก้ไขและส่งข้อมูลใหม่"</strong> ผลการประเมิน คะแนน และความคิดเห็นที่กรรมการได้ประเมินให้ท่านตอนแรกในรอบนี้จะ<strong>หายไปทั้งหมดทันที</strong> และกรรมการจะต้องประเมินใหม่ตั้งแต่ต้น (หากไม่ต้องการแก้ไขสามารถกด "ยกเลิกการแก้ไข" เพื่อคงผลเดิมไว้)
+              </div>
+            </div>
+          </div>
+
+          <!-- Submission Status Banner (Locked State) -->
+          <div v-else-if="teacherSubmissionStatus === 'SUBMITTED'" class="alert success" style="margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
             <div style="display: flex; align-items: center; gap: 8px;">
               <v-icon name="check-circle" size="18"></v-icon>
               <div>
-                <strong style="font-size: 13.5px;">ส่งแบบประเมินตนเองเรียบร้อยแล้ว (สถานะ: รอผลการตรวจประเมินจากคณะกรรมการ)</strong>
-                <div style="font-size: 11.5px; opacity: 0.85; margin-top: 1px;">
-                  บันทึกล่าสุดเมื่อ: {{ teacherSubmittedAt ? new Date(teacherSubmittedAt).toLocaleString('th-TH') : '-' }}
+                <strong style="font-size: 13.5px;">ส่งแบบประเมินตนเองเรียบร้อยแล้ว (ข้อมูลถูกล็อก ไม่สามารถส่งซ้ำได้)</strong>
+                <div style="font-size: 11.5px; opacity: 0.9; margin-top: 1px;">
+                  ส่งข้อมูลล่าสุดเมื่อ: {{ teacherSubmittedAt ? new Date(teacherSubmittedAt).toLocaleString('th-TH') : '-' }} | หากต้องการเปลี่ยนแปลงข้อมูล กรุณากดปุ่ม "ขอแก้ไขข้อมูล" ด้านล่าง
                 </div>
               </div>
             </div>
             <span class="tag green"><v-icon name="check" size="11"></v-icon> ส่งแบบประเมินแล้ว</span>
           </div>
+
+          <!-- Draft Status Banner -->
           <div v-else class="alert" style="background:#eff6ff; color:#1e40af; border:1px solid #bfdbfe; margin-bottom: 14px; display: flex; align-items: center; gap: 8px;">
             <v-icon name="clock" size="18"></v-icon>
             <div>
-              <strong style="font-size: 13.5px;">สถานะ: กำลังจัดทำแบบประเมินตนเอง (ฉบับร่าง)</strong>
+              <strong style="font-size: 13.5px;">สถานะ: กำลังจัดทำแบบประเมินตนเอง (ยังไม่ได้ส่งข้อมูล)</strong>
               <div style="font-size: 11.5px; margin-top: 1px;">
-                กรุณากรอกคะแนนประเมินตนเอง ระบุความคิดเห็น และแนบหลักฐาน (ถ้ามี) จากนั้นกดบันทึกเพื่อส่งให้คณะกรรมการตรวจประเมิน
+                กรุณาเลือกระดับคะแนนประเมินตนเอง ระบุความคิดเห็น และแนบหลักฐาน (ถ้ามี) จากนั้นกดบันทึกเพื่อส่งให้คณะกรรมการตรวจประเมิน
               </div>
             </div>
           </div>
@@ -1492,12 +1670,32 @@
           <div class="page-header" style="margin-bottom: 12px;">
             <div>
               <h2><v-icon name="user" size="18"></v-icon> แบบประเมินตนเอง: {{ currentUser.name }}</h2>
-              <p>รอบการประเมิน: {{ period.name }} | ความคืบหน้าการกรอก: {{ teacherProgress }}%</p>
+              <p>สังกัด: {{ currentUser.department || ('รออนุมัติ: ' + (currentUser.requestedDepartment || '-')) }} | รอบการประเมิน: {{ period.name }}</p>
             </div>
-            <button @click="saveTeacherSelf" class="btn-primary" :disabled="!period.isOpen">
-              <v-icon name="save" size="14"></v-icon>
-              <span>{{ teacherSubmissionStatus === 'SUBMITTED' ? 'บันทึกและอัปเดตแบบประเมิน' : 'บันทึกและส่งผลการประเมินตนเอง' }}</span>
-            </button>
+
+            <!-- Action Button Area: Initial Submit vs Request Edit vs Confirm Edit -->
+            <div v-if="teacherSubmissionStatus !== 'SUBMITTED'">
+              <button type="button" @click="saveTeacherSelf(false)" class="btn-primary" :disabled="!period.isOpen || !isTeacherDeptApproved">
+                <v-icon name="save" size="14"></v-icon>
+                <span>{{ !isTeacherDeptApproved ? 'รออนุมัติสาขาวิชาจึงจะส่งได้' : 'บันทึกและส่งผลการประเมินตนเอง' }}</span>
+              </button>
+            </div>
+            <div v-else-if="!isEditingSelfEval">
+              <button type="button" @click="requestEditSelfEval" class="btn-outline" style="border-color: #dc2626; color: #dc2626; font-weight: 700;" :disabled="!period.isOpen || !isTeacherDeptApproved">
+                <v-icon name="edit" size="14"></v-icon>
+                <span>ขอแก้ไขข้อมูลแบบประเมิน</span>
+              </button>
+            </div>
+            <div v-else style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <button type="button" @click="cancelEditSelfEval" class="btn-outline">
+                <v-icon name="close" size="13"></v-icon>
+                <span>ยกเลิกการแก้ไข</span>
+              </button>
+              <button type="button" @click="saveTeacherSelf(true)" style="background: #dc2626; color: #ffffff; border: none; border-radius: var(--radius-sm); padding: 0 14px; height: 34px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+                <v-icon name="alert" size="14"></v-icon>
+                <span>ยืนยันการแก้ไขและส่งข้อมูลใหม่</span>
+              </button>
+            </div>
           </div>
 
           <div v-if="!period.isOpen" class="alert error" style="margin-bottom: 14px;">
@@ -1513,7 +1711,7 @@
                   <th>ตัวชี้วัด & ค่าน้ำหนัก</th>
                   <th width="190">ระดับประเมินตนเอง</th>
                   <th>ความคิดเห็น / รายละเอียดผลงาน *</th>
-                  <th width="240">หลักฐานร่องรอย</th>
+                  <th width="240">หลักฐานร่องรอย (ไม่บังคับ)</th>
                 </tr>
               </thead>
               <tbody>
@@ -1525,7 +1723,7 @@
                   </td>
                   <td>
                     <!-- Scale Evaluation -->
-                    <select v-if="m.evalType === 'SCALE'" v-model="teacherScores[m.id]" :disabled="!period.isOpen">
+                    <select v-if="m.evalType === 'SCALE'" v-model="teacherScores[m.id]" :disabled="isTeacherFormLocked">
                       <option value="" disabled>-- เลือกระดับคะแนน --</option>
                       <option value="4">ระดับ 4 - สูงกว่าคาดหวัง</option>
                       <option value="3">ระดับ 3 - ตามคาดหวัง</option>
@@ -1533,7 +1731,7 @@
                       <option value="1">ระดับ 1 - ต่ำกว่าคาดหวังมาก</option>
                     </select>
                     <!-- Boolean Evaluation -->
-                    <select v-else v-model="teacherScores[m.id]" :disabled="!period.isOpen">
+                    <select v-else v-model="teacherScores[m.id]" :disabled="isTeacherFormLocked">
                       <option value="" disabled>-- เลือกการปฏิบัติ --</option>
                       <option value="มี">มีการปฏิบัติ (4 คะแนน)</option>
                       <option value="ไม่มี">ไม่มีการปฏิบัติ (0 คะแนน)</option>
@@ -1542,13 +1740,13 @@
                   <td>
                     <textarea v-model="teacherComments[m.id]" rows="2" 
                               placeholder="ระบุความคิดเห็นและสรุปผลการดำเนินงานในตัวชี้วัดนี้..." 
-                              :disabled="!period.isOpen"></textarea>
+                              :disabled="isTeacherFormLocked"></textarea>
                   </td>
                   <td>
                     <div v-if="m.evidenceType === 'URL'">
                       <input v-model="teacherEvidence[m.id]" 
-                             placeholder="ระบุลิงก์ผลงาน (เช่น Google Drive / ไฟล์ออนไลน์)" 
-                             :disabled="!period.isOpen" />
+                             placeholder="ระบุลิงก์ผลงาน (ถ้ามี)" 
+                             :disabled="isTeacherFormLocked" />
                       <div v-if="teacherEvidence[m.id]" style="margin-top: 3px;">
                         <a :href="teacherEvidence[m.id]" target="_blank" style="color:var(--primary); font-size:11.5px; font-weight:600; display:inline-flex; align-items:center; gap:4px;">
                           <v-icon name="paperclip" size="12"></v-icon> เปิดดูลิงก์
@@ -1556,13 +1754,16 @@
                       </div>
                     </div>
                     <div v-else>
-                      <input type="file" @change="uploadTeacherFile($event, m.id)" 
-                             style="font-size:11px;" :disabled="!period.isOpen" />
+                      <input v-if="!isTeacherFormLocked" type="file" @change="uploadTeacherFile($event, m.id)" 
+                             style="font-size:11px;" :disabled="isTeacherFormLocked" />
                       <div v-if="teacherEvidence[m.id]" style="margin-top: 3px; display:flex; align-items:center; gap:6px;">
                         <a :href="teacherEvidence[m.id]" target="_blank" style="color:var(--primary); font-size:11.5px; font-weight:600; display:inline-flex; align-items:center; gap:4px;">
                           <v-icon name="paperclip" size="12"></v-icon> ดูไฟล์ที่แนบแล้ว
                         </a>
-                        <button type="button" class="btn-sm" style="padding:1px 5px; font-size:10px; border:none; background:#fee2e2; color:#b91c1c; border-radius:3px;" @click="teacherEvidence[m.id] = ''">ลบ</button>
+                        <button v-if="!isTeacherFormLocked" type="button" class="btn-sm" style="padding:1px 5px; font-size:10px; border:none; background:#fee2e2; color:#b91c1c; border-radius:3px;" @click="teacherEvidence[m.id] = ''">ลบ</button>
+                      </div>
+                      <div v-else-if="isTeacherFormLocked" style="font-size:11.5px; color:var(--text-muted);">
+                        ไม่มีเอกสารแนบ
                       </div>
                     </div>
                   </td>
@@ -1830,9 +2031,9 @@
                 </div>
 
                 <div style="margin-top: 12px; display: flex; gap: 6px;">
-                  <button @click="openCandidateGrading(c)" class="btn-primary" style="flex: 1; height: 32px; font-size: 12px;">
-                    <v-icon :name="c.myEvaluationCompleted ? 'edit' : 'award'" size="13"></v-icon>
-                    <span>{{ c.myEvaluationCompleted ? 'แก้ไขผลประเมิน' : (c.isSubmittedByTeacher ? 'เริ่มตรวจประเมิน' : 'ตรวจประเมิน') }}</span>
+                  <button @click="openCandidateGrading(c)" class="btn-primary" style="flex: 1; height: 32px; font-size: 12px;" :disabled="!c.isSubmittedByTeacher">
+                    <v-icon :name="c.myEvaluationCompleted ? 'edit' : (c.isSubmittedByTeacher ? 'award' : 'clock')" size="13"></v-icon>
+                    <span>{{ c.myEvaluationCompleted ? 'แก้ไขผลประเมิน' : (c.isSubmittedByTeacher ? 'เริ่มตรวจประเมิน' : 'รอผู้รับการประเมินส่งข้อมูล') }}</span>
                   </button>
                   <button v-if="c.myEvaluationCompleted" @click="openIndividualReportModal(c)" class="btn-outline" style="height: 32px; font-size: 12px;" title="พิมพ์รายงานสรุปผล PDF">
                     <v-icon name="printer" size="13"></v-icon>
@@ -1860,7 +2061,7 @@
             <div style="display: flex; align-items: center; gap: 8px;">
               <span style="font-size: 12px; color: var(--text-muted);">สลับผู้รับการประเมิน:</span>
               <select :value="judgeSelectedIdx" @change="onJudgeCandidateDropdownChange($event.target.value)" style="width: 220px; height: 30px; font-size: 12px;">
-                <option v-for="(c, idx) in judgeCandidates" :key="c.assignmentId" :value="idx">
+                <option v-for="(c, idx) in judgeCandidates" :key="c.teacherCitizenId || c.assignmentId" :value="idx" :disabled="!c.isSubmittedByTeacher">
                   {{ c.teacherName }} ({{ c.status === 'EVALUATED' ? 'ตรวจแล้ว' : (c.status === 'SUBMITTED' ? 'ส่งแล้ว' : 'รอส่ง') }})
                 </option>
               </select>
@@ -1988,7 +2189,7 @@
     </div>
 
     <!-- ============================================================== -->
-    <!-- 3. MODALS (PROFILE, USERS, ACCOUNTS, METRICS, REPORT PREVIEW) -->
+    <!-- 3. MODALS (PROFILE, USERS, ACCOUNTS, METRICS, WARNINGS, REPORT) -->
     <!-- ============================================================== -->
 
     <!-- 3.0 PROFILE MODAL (EDIT OWN PROFILE FOR TEACHER / JUDGE / ADMIN) -->
@@ -2012,10 +2213,11 @@
                 <option value="นาง">นาง</option>
                 <option value="นางสาว">นางสาว</option>
                 <option value="ดร.">ดร.</option>
+                <option value="ผศ.ดร.">ผศ.ดร.</option>
               </select>
             </div>
             <div style="grid-column: span 2;">
-              <label>ชื่อ-นามสกุล *</label>
+              <label>ชื่อ-นามสกุล (ไม่ต้องใส่คำนำหน้าซ้ำ) *</label>
               <input v-model="profileForm.name" required />
             </div>
           </div>
@@ -2033,12 +2235,26 @@
 
           <div class="grid-2" style="margin-bottom: 10px;">
             <div>
-              <label>สังกัด / แผนกวิชา</label>
-              <input v-model="profileForm.department" />
+              <label>สาขาวิชา / สังกัดหน่วยงาน *</label>
+              <select v-model="profileForm.departmentSelect" required>
+                <option value="" disabled>-- เลือกสาขาวิชา / สังกัด --</option>
+                <option v-for="deptName in profileDepartmentOptions" :key="deptName" :value="deptName">{{ deptName }}</option>
+                <option value="__CUSTOM__">
+                  {{ currentUser && currentUser.role === 'teacher' ? '+ ขอเพิ่มสาขาวิชาใหม่ (ส่งให้ฝ่ายบุคลากร HR อนุมัติ)' : '+ ระบุสังกัด / สาขาวิชาใหม่' }}
+                </option>
+              </select>
             </div>
             <div>
               <label>ตำแหน่งปัจจุบัน</label>
               <input v-model="profileForm.position" />
+            </div>
+          </div>
+
+          <div v-if="profileForm.departmentSelect === '__CUSTOM__'" style="margin-bottom: 10px; padding: 10px; background: #fffbeb; border: 1px solid #fcd34d; border-radius: var(--radius-sm);">
+            <label style="color: #92400e; font-weight: 700;">ระบุชื่อสาขาวิชา / สังกัดใหม่ *</label>
+            <input v-model="profileForm.customDepartment" placeholder="เช่น แผนกวิชาอิเล็กทรอนิกส์" required style="margin-top: 4px; background: #fff;" />
+            <div v-if="currentUser && currentUser.role === 'teacher'" style="font-size: 11.5px; color: #b45309; margin-top: 4px;">
+              หมายเหตุ: การขอเพิ่มสาขาวิชาใหม่จะต้องรอฝ่ายบุคลากร (HR) อนุมัติก่อน จึงจะสามารถส่งแบบประเมินได้
             </div>
           </div>
 
@@ -2066,13 +2282,13 @@
       </div>
     </div>
 
-    <!-- 3.1 USER MODAL (ADD / EDIT) -->
+    <!-- 3.1 USER MODAL (ADD / EDIT PERSONNEL BY HR/ADMIN) -->
     <div v-if="showUserModal" class="modal-overlay">
       <div class="modal-content">
         <div class="modal-header">
           <h3>
             <v-icon :name="userModalMode === 'add' ? 'plus' : 'edit'" size="15"></v-icon>
-            <span>{{ userModalMode === 'add' ? 'เพิ่มผู้ใช้งานใหม่' : 'แก้ไขข้อมูลผู้ใช้งาน' }}</span>
+            <span>{{ userModalMode === 'add' ? 'เพิ่มผู้ใช้งานใหม่' : 'แก้ไขข้อมูลบุคลากร' }}</span>
           </h3>
           <button @click="showUserModal = false" class="btn-sm" style="border:none; padding:2px 4px;" title="ปิด">
             <v-icon name="close" size="13"></v-icon>
@@ -2096,6 +2312,7 @@
                 <option value="นาง">นาง</option>
                 <option value="นางสาว">นางสาว</option>
                 <option value="ดร.">ดร.</option>
+                <option value="ผศ.ดร.">ผศ.ดร.</option>
               </select>
             </div>
             <div>
@@ -2109,13 +2326,21 @@
           </div>
           <div class="grid-2" style="margin-bottom: 10px;">
             <div>
-              <label>สังกัด / แผนกวิชา</label>
-              <input v-model="userModalForm.department" />
+              <label>สาขาวิชา / สังกัดหน่วยงาน *</label>
+              <select v-model="userModalForm.departmentSelect" required>
+                <option value="" disabled>-- เลือกสาขาวิชา / สังกัด --</option>
+                <option v-for="deptName in adminUserDepartmentOptions" :key="deptName" :value="deptName">{{ deptName }}</option>
+                <option value="__CUSTOM__">+ เพิ่มสาขาวิชา / สังกัดใหม่</option>
+              </select>
             </div>
             <div>
               <label>ตำแหน่ง</label>
               <input v-model="userModalForm.position" />
             </div>
+          </div>
+          <div v-if="userModalForm.departmentSelect === '__CUSTOM__'" style="margin-bottom: 10px;">
+            <label>ระบุชื่อสาขาวิชา / สังกัดใหม่ (อนุมัติทันที) *</label>
+            <input v-model="userModalForm.customDepartment" placeholder="เช่น แผนกวิชาอิเล็กทรอนิกส์" required />
           </div>
           <div v-if="userModalMode === 'add'" style="margin-bottom: 10px;">
             <label>รหัสผ่านเริ่มต้น *</label>
@@ -2229,7 +2454,7 @@
           <div style="background: #f8fafc; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; margin-bottom: 14px;">
             <div class="grid-2" style="font-size: 12.5px;">
               <div>ผู้รับการประเมิน: <strong>{{ selectedReportItem ? selectedReportItem.teacherName : '-' }}</strong></div>
-              <div>สังกัด / แผนก: <strong>{{ selectedReportItem ? selectedReportItem.teacherDepartment || selectedReportItem.department : '-' }}</strong></div>
+              <div>สังกัด / แผนก: <strong>{{ selectedReportItem ? (selectedReportItem.department || selectedReportItem.teacherDepartment) : '-' }}</strong></div>
               <div>กรรมการผู้ประเมิน: <strong>{{ selectedReportItem ? selectedReportItem.judgeName : '-' }}</strong></div>
               <div>บทบาทในคณะกรรมการ: <strong>{{ selectedReportItem ? selectedReportItem.roleInBoard : '-' }}</strong></div>
             </div>
@@ -2240,27 +2465,35 @@
               <thead>
                 <tr>
                   <th width="40">ข้อ</th>
-                  <th>ตัวชี้วัด</th>
-                  <th width="90">น้ำหนัก</th>
-                  <th width="110">คะแนนประเมิน</th>
-                  <th width="110">ระดับผลการประเมิน</th>
+                  <th>ตัวชี้วัดการประเมิน</th>
+                  <th width="80">น้ำหนัก</th>
+                  <th>ความคิดเห็นผู้รับการประเมิน</th>
+                  <th width="95">คะแนนตนเอง</th>
+                  <th width="105">คะแนนกรรมการ</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="(m, idx) in metrics" :key="m.id">
+                <tr v-for="(m, idx) in (selectedReportItem && selectedReportItem.metricsRows ? selectedReportItem.metricsRows : [])" :key="m.id">
                   <td>{{ idx + 1 }}</td>
-                  <td>{{ m.title }}</td>
+                  <td>
+                    <strong>{{ m.title }}</strong>
+                    <div v-if="m.description" style="font-size:11px; color:var(--text-muted);">{{ m.description }}</div>
+                  </td>
                   <td>{{ m.weight }}%</td>
-                  <td><strong>{{ selectedReportItem && selectedReportItem.totalScore ? selectedReportItem.totalScore : '-' }}</strong></td>
-                  <td><span class="tag green">เป็นไปตามเกณฑ์</span></td>
+                  <td style="font-size:12px;">{{ m.teacherComment || '-' }}</td>
+                  <td>{{ m.selfScoreDisplay || '-' }}</td>
+                  <td><strong>{{ m.judgeScoreDisplay || '-' }}</strong></td>
                 </tr>
               </tbody>
             </table>
           </div>
 
           <div style="background: #f8fafc; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px; margin-bottom: 14px;">
-            <div style="font-weight: 700; font-size: 12px; margin-bottom: 4px;">สรุปผลการประเมิน:</div>
-            <div style="font-size: 13px;">คะแนนรวม: <strong>{{ selectedReportItem ? selectedReportItem.totalScore : '-' }} / 4.00</strong> | ระดับผลการประเมิน: <strong>{{ getPerformanceGrade(selectedReportItem ? selectedReportItem.totalScore : 0).grade }}</strong></div>
+            <div style="font-weight: 700; font-size: 12px; margin-bottom: 4px;">สรุปผลการประเมินและข้อเสนอแนะ:</div>
+            <div style="font-size: 13px;">คะแนนรวม: <strong>{{ selectedReportItem && selectedReportItem.totalScore ? selectedReportItem.totalScore : '-' }} / 4.00</strong> | ระดับผลการประเมิน: <strong>{{ getPerformanceGrade(selectedReportItem ? selectedReportItem.totalScore : 0).grade }}</strong></div>
+            <div v-if="selectedReportItem && selectedReportItem.overallFeedback" style="font-size: 12.5px; color: #334155; margin-top: 6px;">
+              <strong>ข้อเสนอแนะจากกรรมการ:</strong> {{ selectedReportItem.overallFeedback }}
+            </div>
           </div>
         </div>
 
@@ -2271,6 +2504,76 @@
             <span>พิมพ์เอกสารราชการ (PDF)</span>
           </button>
         </div>
+      </div>
+    </div>
+
+    <!-- 3.5 RED WARNING MODAL WHEN REQUESTING TO EDIT ALREADY-SUBMITTED SELF EVALUATION -->
+    <div v-if="showEditSelfWarningModal" class="modal-overlay">
+      <div class="modal-content" style="border: 2px solid #dc2626;">
+        <div class="modal-header" style="background: #fef2f2; border-bottom: 1px solid #fecaca;">
+          <h3 style="color: #dc2626;">
+            <v-icon name="alert" size="17"></v-icon>
+            <span>คำเตือนสำคัญก่อนขอแก้ไขข้อมูลแบบประเมิน</span>
+          </h3>
+          <button @click="showEditSelfWarningModal = false" class="btn-sm" style="border:none; padding:2px 4px; background:transparent; color:#991b1b;" title="ปิด">
+            <v-icon name="close" size="14"></v-icon>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div style="background: #fef2f2; border: 1px solid #fca5a5; border-left: 4px solid #dc2626; border-radius: var(--radius-sm); padding: 12px 14px; color: #991b1b; margin-bottom: 12px;">
+            <div style="font-weight: 700; font-size: 14px; margin-bottom: 6px;">
+              ผลคะแนนที่กรรมการประเมินให้ตอนแรกจะหายไปทั้งหมด!
+            </div>
+            <ul style="margin: 0; padding-left: 18px; font-size: 12.5px; line-height: 1.6;">
+              <li>เมื่อท่านแก้ไขข้อมูลและกดบันทึกส่งใหม่ <strong>คะแนนและข้อเสนอแนะทั้งหมดที่กรรมการประเมินไว้ก่อนหน้านี้ในรอบนี้จะถูกลบออกทันที</strong></li>
+              <li>สถานะการประเมินจะกลับเป็น <strong>"รอตรวจประเมินใหม่"</strong> เพื่อให้คณะกรรมการตรวจสอบข้อมูลชุดใหม่ของท่านอย่างถูกต้อง</li>
+              <li v-if="teacherJudgeEvaluations.length > 0" style="color: #b91c1c; font-weight: 700; margin-top: 4px;">
+                ขณะนี้มีกรรมการประเมินผลให้ท่านแล้ว {{ teacherJudgeEvaluations.length }} ท่าน หากท่านบันทึกการแก้ไข ผลประเมินเดิมทั้ง {{ teacherJudgeEvaluations.length }} ท่านจะถูกล้างออก!
+              </li>
+            </ul>
+          </div>
+          <p style="font-size: 12.5px; color: var(--text-muted); margin: 0;">
+            ท่านต้องการปลดล็อกแบบฟอร์มเพื่อดำเนินการแก้ไขข้อมูลใช่หรือไม่?
+          </p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" @click="showEditSelfWarningModal = false" class="btn-outline">ยกเลิก</button>
+          <button type="button" @click="confirmUnlockSelfEval" style="background: #dc2626; color: #ffffff; border: none; border-radius: var(--radius-sm); padding: 0 14px; height: 34px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+            <v-icon name="alert" size="14"></v-icon>
+            <span>รับทราบคำเตือน และขอแก้ไขข้อมูล</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3.6 HR REJECT CUSTOM DEPARTMENT MODAL -->
+    <div v-if="showRejectDeptModal" class="modal-overlay">
+      <div class="modal-content" style="border: 1px solid #fca5a5;">
+        <div class="modal-header" style="background: #fef2f2; border-bottom: 1px solid #fecaca;">
+          <h3 style="color: #b91c1c;">
+            <v-icon name="alert" size="16"></v-icon>
+            <span>ไม่อนุมัติคำขอเพิ่มสาขาวิชาใหม่</span>
+          </h3>
+          <button @click="showRejectDeptModal = false" class="btn-sm" style="border:none; padding:2px 4px;" title="ปิด">
+            <v-icon name="close" size="13"></v-icon>
+          </button>
+        </div>
+        <form @submit.prevent="confirmRejectDepartmentRequest" class="modal-body">
+          <div style="background: #f8fafc; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 12px; font-size: 12.5px;">
+            <div>ผู้ส่งคำขอ: <strong>{{ rejectDeptTarget ? rejectDeptTarget.name : '-' }}</strong></div>
+            <div style="margin-top: 3px;">สาขาวิชาที่ขอเพิ่ม: <strong style="color: #b91c1c;">{{ rejectDeptTarget ? rejectDeptTarget.requestedDepartment : '-' }}</strong></div>
+          </div>
+          <div style="margin-bottom: 12px;">
+            <label style="color: #991b1b; font-weight: 700;">ระบุเหตุผลที่ไม่อนุมัติ (จะแสดงแจ้งให้ผู้รับการประเมินทราบเพื่อเลือกสาขาใหม่) *</label>
+            <textarea v-model="rejectDeptReason" rows="3" required placeholder="เช่น ชื่อสาขาวิชาซ้ำกับแผนกวิชาคอมพิวเตอร์ธุรกิจ กรุณาเลือกแผนกวิชาที่มีอยู่ในระบบ"></textarea>
+          </div>
+          <div class="modal-footer" style="margin: 10px -18px -16px -18px;">
+            <button type="button" @click="showRejectDeptModal = false" class="btn-outline">ยกเลิก</button>
+            <button type="submit" style="background: #dc2626; color: #fff; border: none; border-radius: var(--radius-sm); padding: 0 14px; height: 34px; font-weight: 700; cursor: pointer;">
+              ยืนยันไม่อนุมัติและส่งเหตุผล
+            </button>
+          </div>
+        </form>
       </div>
     </div>
 
@@ -2297,8 +2600,8 @@
             <td><strong>เลขประจำตัวประชาชน:</strong> {{ printCandidateData.teacherCitizenId || '-' }}</td>
           </tr>
           <tr>
-            <td><strong>กรรมการผู้ประเมิน:</strong> {{ printCandidateData.judgeName || currentUser.name }}</td>
-            <td><strong>บทบาทในคณะกรรมการ:</strong> {{ printCandidateData.roleInBoard || 'ประธานกรรมการ' }}</td>
+            <td><strong>กรรมการผู้ประเมิน:</strong> {{ printCandidateData.judgeName || (currentUser ? currentUser.name : '-') }}</td>
+            <td><strong>บทบาทในคณะกรรมการ:</strong> {{ printCandidateData.roleInBoard || 'กรรมการผู้ประเมิน' }}</td>
           </tr>
         </table>
 
@@ -2314,28 +2617,24 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="(m, idx) in metrics" :key="m.id">
+            <tr v-for="(m, idx) in (printCandidateData.metricsRows || [])" :key="m.id">
               <td style="text-align:center;">{{ idx + 1 }}</td>
               <td>
                 <strong>{{ m.title }}</strong>
-                <div style="font-size:9.5pt; color:#333;">{{ m.description }}</div>
+                <div v-if="m.description" style="font-size:9.5pt; color:#333;">{{ m.description }}</div>
               </td>
               <td style="text-align:center;">{{ m.weight }}%</td>
-              <td style="font-size:10pt;">{{ teacherComments[m.id] || '-' }}</td>
-              <td style="text-align:center;">
-                {{ teacherScores[m.id] ? (m.evalType === 'BOOLEAN' ? (teacherScores[m.id] === 'มี' ? 'มี' : 'ไม่มี') : teacherScores[m.id]) : '-' }}
-              </td>
-              <td style="text-align:center; font-weight:bold;">
-                {{ printCandidateData.metricScores && printCandidateData.metricScores[m.id] !== undefined ? printCandidateData.metricScores[m.id] : (getJudgeScoreForMetric(m.id) !== null ? getJudgeScoreForMetric(m.id) : (printCandidateData.totalScore || '-')) }}
-              </td>
+              <td style="font-size:10pt;">{{ m.teacherComment || '-' }}</td>
+              <td style="text-align:center;">{{ m.selfScoreDisplay || '-' }}</td>
+              <td style="text-align:center; font-weight:bold;">{{ m.judgeScoreDisplay || '-' }}</td>
             </tr>
           </tbody>
           <tfoot>
             <tr style="background:#f9f9f9; font-weight:bold;">
               <td colspan="2" style="text-align:right;">ผลรวมคะแนนสุทธิ / ระดับการประเมิน:</td>
-              <td style="text-align:center;">{{ totalMetricWeight }}%</td>
+              <td style="text-align:center;">{{ printCandidateData.totalWeight || totalMetricWeight }}%</td>
               <td colspan="2" style="text-align:center; font-size:11pt;">
-                คะแนนรวม: {{ printCandidateData.totalScore ? printCandidateData.totalScore + ' / 4.00' : '- / 4.00' }}
+                คะแนนรวม: {{ printCandidateData.totalScore && printCandidateData.totalScore !== '-' ? printCandidateData.totalScore + ' / 4.00' : '- / 4.00' }}
               </td>
               <td style="text-align:center; font-size:11pt;">
                 {{ getPerformanceGrade(printCandidateData.totalScore).grade }}
@@ -2358,7 +2657,7 @@
           </div>
           <div class="print-sign-box">
             <div>(ลงชื่อ)....................................................................</div>
-            <div style="margin-top:4pt;">( {{ printCandidateData.judgeName || currentUser.name }} )</div>
+            <div style="margin-top:4pt;">( {{ printCandidateData.judgeName || (currentUser ? currentUser.name : '-') }} )</div>
             <div>กรรมการผู้ประเมิน</div>
             <div>วันที่ {{ new Date().getDate() }} / {{ new Date().getMonth() + 1 }} / {{ new Date().getFullYear() + 543 }}</div>
           </div>
@@ -2400,26 +2699,22 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="(m, idx) in metrics" :key="m.id">
+            <tr v-for="(m, idx) in (printCandidateData.metricsRows || [])" :key="m.id">
               <td style="text-align:center;">{{ idx + 1 }}</td>
               <td>
                 <strong>{{ m.title }}</strong>
-                <div style="font-size:9.5pt; color:#333;">{{ m.description }}</div>
+                <div v-if="m.description" style="font-size:9.5pt; color:#333;">{{ m.description }}</div>
               </td>
               <td style="text-align:center;">{{ m.weight }}%</td>
-              <td style="font-size:10pt;">{{ teacherComments[m.id] || '-' }}</td>
-              <td style="text-align:center;">
-                {{ teacherScores[m.id] ? (m.evalType === 'BOOLEAN' ? (teacherScores[m.id] === 'มี' ? 'มี' : 'ไม่มี') : teacherScores[m.id]) : '-' }}
-              </td>
-              <td style="text-align:center; font-weight:bold;">
-                {{ teacherConsolidatedSummary && teacherConsolidatedSummary.metricAverages[m.id] !== null ? teacherConsolidatedSummary.metricAverages[m.id] : '-' }}
-              </td>
+              <td style="font-size:10pt;">{{ m.teacherComment || '-' }}</td>
+              <td style="text-align:center;">{{ m.selfScoreDisplay || '-' }}</td>
+              <td style="text-align:center; font-weight:bold;">{{ m.avgScoreDisplay || '-' }}</td>
             </tr>
           </tbody>
           <tfoot>
             <tr style="background:#f9f9f9; font-weight:bold;">
               <td colspan="2" style="text-align:right;">คะแนนประเมินเฉลี่ยสุทธิ / ระดับการประเมิน:</td>
-              <td style="text-align:center;">{{ totalMetricWeight }}%</td>
+              <td style="text-align:center;">{{ printCandidateData.totalWeight || totalMetricWeight }}%</td>
               <td colspan="2" style="text-align:center; font-size:11pt;">
                 คะแนนเฉลี่ยรวม: {{ teacherConsolidatedSummary ? teacherConsolidatedSummary.averageTotalScore + ' / 4.00' : '- / 4.00' }}
               </td>
@@ -2533,7 +2828,7 @@
 
   <!-- Vue 3 Application Script -->
   <script>
-    const { createApp, ref, computed, onMounted } = Vue;
+    const { createApp, ref, computed, onMounted, nextTick } = Vue;
 
     const app = createApp({
       setup() {
@@ -2546,6 +2841,9 @@
 
         const currentUser = ref(null);
         const token = ref(localStorage.getItem('token') || '');
+
+        // Public Approved Departments (for Registration, Profile Edit, Re-selection)
+        const publicDepartments = ref([]);
 
         // Periods State
         const allPeriods = ref([]);
@@ -2563,6 +2861,8 @@
           confirmPassword: '',
           role: 'teacher',
           roleTitle: 'ผู้รับการประเมิน',
+          departmentSelect: '',
+          customDepartment: '',
           department: '',
           position: '',
           phone: '',
@@ -2575,7 +2875,24 @@
 
         // Profile Edit Modal State
         const showProfileModal = ref(false);
-        const profileForm = ref({ prefix: 'นาย', name: '', department: '', position: '', phone: '', email: '', employeeId: '', password: '' });
+        const profileForm = ref({
+          prefix: 'นาย',
+          name: '',
+          departmentSelect: '',
+          customDepartment: '',
+          department: '',
+          position: '',
+          phone: '',
+          email: '',
+          employeeId: '',
+          password: ''
+        });
+
+        // Rejected Department Re-selection State (Teacher Dashboard)
+        const reselectDeptForm = ref({
+          departmentSelect: '',
+          customDepartment: ''
+        });
 
         // Canvas Drawing Variables
         let isDrawing = false;
@@ -2588,7 +2905,19 @@
         const userSearchQuery = ref('');
         const showUserModal = ref(false);
         const userModalMode = ref('add');
-        const userModalForm = ref({ id: null, role: 'teacher', prefix: 'นาย', name: '', citizenId: '', department: '', position: '', password: '' });
+        const userModalForm = ref({
+          id: null,
+          role: 'teacher',
+          prefix: 'นาย',
+          name: '',
+          citizenId: '',
+          departmentSelect: '',
+          customDepartment: '',
+          department: '',
+          deptStatus: 'APPROVED',
+          position: '',
+          password: ''
+        });
 
         // Password Reset Modal State
         const showAccountModal = ref(false);
@@ -2606,11 +2935,21 @@
         const newMetric = ref({ title: '', weight: 30, evalType: 'SCALE', evidenceType: 'PDF' });
         const newAssign = ref({ teacherCitizenId: '', judgeCitizenId: '', roleInBoard: 'ประธานกรรมการ' });
 
-        // Department and Department Judges State
+        // Department, Custom Department Requests, and Department Judges State
         const departmentsList = ref([]);
         const departmentJudgesList = ref([]);
         const newDept = ref({ name: '', code: '' });
         const newDeptJudge = ref({ departmentName: '', judgeCitizenId: '', roleInBoard: 'กรรมการ' });
+
+        const departmentRequests = ref([]);
+        const approveDeptCodes = ref({});
+        const showRejectDeptModal = ref(false);
+        const rejectDeptTarget = ref(null);
+        const rejectDeptReason = ref('');
+
+        const pendingDepartmentRequests = computed(() =>
+          (departmentRequests.value || []).filter(r => r.deptStatus === 'PENDING')
+        );
 
         // Report & Print State
         const showReportModal = ref(false);
@@ -2625,12 +2964,52 @@
         const teacherEvidence = ref({});
         const teacherSubmissionStatus = ref('DRAFT');
         const teacherSubmittedAt = ref(null);
+        const isEditingSelfEval = ref(false);
+        const showEditSelfWarningModal = ref(false);
         const teacherJudgeFeedback = ref(null);
         const teacherJudgeMetricScores = ref([]);
         const teacherJudgeEvaluations = ref([]);
         const teacherConsolidatedSummary = ref(null);
         const selectedJudgeEvalIdx = ref(0);
         const currentSelectedJudgeEval = computed(() => teacherJudgeEvaluations.value[selectedJudgeEvalIdx.value] || null);
+
+        const isTeacherDeptApproved = computed(() => {
+          if (!currentUser.value) return false;
+          const status = currentUser.value.deptStatus || 'APPROVED';
+          return status === 'APPROVED' && Boolean(currentUser.value.department);
+        });
+
+        const isTeacherFormLocked = computed(() => {
+          if (!period.value.isOpen) return true;
+          if (!isTeacherDeptApproved.value) return true;
+          if (teacherSubmissionStatus.value === 'SUBMITTED' && !isEditingSelfEval.value) return true;
+          return false;
+        });
+
+        // Department Dropdown Option Lists
+        const profileDepartmentOptions = computed(() => {
+          const set = new Set();
+          (publicDepartments.value || []).forEach(d => { if (d && d.name) set.add(d.name); });
+          (departmentsList.value || []).forEach(d => { if (d && d.name) set.add(d.name); });
+          if (currentUser.value && currentUser.value.role !== 'teacher') {
+            ['ศูนย์เทคโนโลยีสารสนเทศ', 'งานบุคลากร', 'คณะกรรมการประเมินภายนอก'].forEach(n => set.add(n));
+            if (currentUser.value.department) set.add(currentUser.value.department);
+          }
+          return Array.from(set);
+        });
+
+        const adminUserDepartmentOptions = computed(() => {
+          const set = new Set();
+          (departmentsList.value || []).forEach(d => { if (d && d.name) set.add(d.name); });
+          (publicDepartments.value || []).forEach(d => { if (d && d.name) set.add(d.name); });
+          if (userModalForm.value.role !== 'teacher') {
+            ['ศูนย์เทคโนโลยีสารสนเทศ', 'งานบุคลากร', 'คณะกรรมการประเมินภายนอก'].forEach(n => set.add(n));
+          }
+          if (userModalForm.value.department && userModalForm.value.deptStatus === 'APPROVED') {
+            set.add(userModalForm.value.department);
+          }
+          return Array.from(set);
+        });
 
         // Judge State & Candidate Selection
         const judgeViewMode = ref('list'); // 'list' | 'workspace'
@@ -2641,6 +3020,43 @@
         const judgeOverallFeedback = ref('');
         const candidateSearchQuery = ref('');
         const candidateFilterStatus = ref('ALL'); // 'ALL', 'SUBMITTED', 'EVALUATED', 'PENDING'
+
+        // Display & Score Formatting Helpers
+        function stripKnownPrefix(rawName) {
+          const knownPrefixes = ['ผศ.ดร.', 'รศ.ดร.', 'ศ.ดร.', 'ว่าที่ ร.ต.', 'นางสาว', 'ดร.', 'นาย', 'นาง'];
+          let clean = String(rawName || '').trim();
+          for (const p of knownPrefixes) {
+            if (clean.startsWith(p)) {
+              clean = clean.slice(p.length).trim();
+              break;
+            }
+          }
+          return clean || String(rawName || '').trim();
+        }
+
+        function formatUserDisplayName(u) {
+          if (!u) return '-';
+          const name = String(u.name || '').trim();
+          const prefix = String(u.prefix || '').trim();
+          if (!prefix || name.startsWith(prefix)) return name || '-';
+          return `${prefix}${name}`;
+        }
+
+        function formatSelfScoreDisplay(evalType, selfScore) {
+          if (selfScore === null || selfScore === undefined || String(selfScore).trim() === '') return '-';
+          const s = String(selfScore).trim();
+          if (evalType === 'BOOLEAN') {
+            return (s === 'มี' || s === '4' || s === 'true' || s === '1') ? 'มีการปฏิบัติ' : 'ไม่มีการปฏิบัติ';
+          }
+          return 'ระดับ ' + s;
+        }
+
+        function formatJudgeScoreDisplay(scoreVal) {
+          if (scoreVal === null || scoreVal === undefined || scoreVal === '' || scoreVal === '-') return '-';
+          const num = parseFloat(scoreVal);
+          if (isNaN(num)) return '-';
+          return num.toFixed(2) + ' / 4.00';
+        }
 
         // Performance Grade Helper (Standard ก.ค.ศ.)
         function getPerformanceGrade(scoreVal) {
@@ -2672,6 +3088,24 @@
             throw new Error(data.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อเครือข่าย');
           }
           return data;
+        }
+
+        async function loadPublicDepartments() {
+          try {
+            const res = await fetchAPI('/auth/departments');
+            if (res && Array.isArray(res.data)) {
+              publicDepartments.value = res.data;
+            }
+          } catch (e) {
+            console.warn('Could not load public departments:', e.message);
+          }
+        }
+
+        async function switchToRegister() {
+          authError.value = '';
+          authSuccess.value = '';
+          await loadPublicDepartments();
+          authMode.value = 'register';
         }
 
         // Quick Login Helper
@@ -2714,23 +3148,44 @@
           }
         }
 
-        // Register Account
+        // Register Account (supports selecting approved department or requesting custom HR approval)
         async function registerUser() {
           if (regForm.value.password !== regForm.value.confirmPassword) {
             authError.value = 'รหัสผ่านและยืนยันรหัสผ่านไม่ตรงกัน';
             return;
           }
+          if (!regForm.value.departmentSelect) {
+            authError.value = 'กรุณาเลือกสาขาวิชา / แผนกวิชา';
+            return;
+          }
+          const isCustom = regForm.value.departmentSelect === '__CUSTOM__';
+          const customName = String(regForm.value.customDepartment || '').trim();
+          if (isCustom && !customName) {
+            authError.value = 'กรุณาระบุชื่อสาขาวิชาใหม่ที่ต้องการขอเพิ่มให้ฝ่ายบุคลากร (HR) อนุมัติ';
+            return;
+          }
+
           isAuthLoading.value = true;
           authError.value = '';
           try {
-            await fetchAPI('/auth/register', {
+            const payload = {
+              ...regForm.value,
+              isCustomDepartment: isCustom,
+              customDepartment: isCustom ? customName : '',
+              department: isCustom ? '' : regForm.value.departmentSelect
+            };
+            const res = await fetchAPI('/auth/register', {
               method: 'POST',
-              body: JSON.stringify(regForm.value)
+              body: JSON.stringify(payload)
             });
-            authSuccess.value = 'ลงทะเบียนสำเร็จ กรุณาเข้าสู่ระบบ';
+            authSuccess.value = res.message || (isCustom
+              ? 'ลงทะเบียนสำเร็จ คำขอเพิ่มสาขาวิชาใหม่ถูกส่งให้ฝ่ายบุคลากร (HR) พิจารณาอนุมัติแล้ว'
+              : 'ลงทะเบียนสำเร็จ กรุณาเข้าสู่ระบบ');
             authMode.value = 'login';
             loginForm.value.citizenId = regForm.value.citizenId;
             loginForm.value.password = '';
+            regForm.value.departmentSelect = '';
+            regForm.value.customDepartment = '';
           } catch (err) {
             authError.value = err.message;
           } finally {
@@ -2742,6 +3197,8 @@
         function logout() {
           currentUser.value = null;
           token.value = '';
+          isEditingSelfEval.value = false;
+          showEditSelfWarningModal.value = false;
           localStorage.removeItem('token');
           localStorage.removeItem('user');
           judgeViewMode.value = 'list';
@@ -2749,16 +3206,34 @@
         }
 
         // Open Profile Modal for Current User
-        function openProfileModal() {
+        async function openProfileModal() {
           if (!currentUser.value) return;
+          await loadPublicDepartments();
+          const u = currentUser.value;
+          const opts = profileDepartmentOptions.value;
+          let deptSel = '';
+          let customDept = '';
+
+          if (u.deptStatus === 'PENDING' && u.requestedDepartment) {
+            deptSel = '__CUSTOM__';
+            customDept = u.requestedDepartment;
+          } else if (u.department && opts.includes(u.department)) {
+            deptSel = u.department;
+          } else if (u.department) {
+            deptSel = '__CUSTOM__';
+            customDept = u.department;
+          }
+
           profileForm.value = {
-            prefix: currentUser.value.prefix || 'นาย',
-            name: currentUser.value.name || '',
-            department: currentUser.value.department || '',
-            position: currentUser.value.position || '',
-            phone: currentUser.value.phone || '',
-            email: currentUser.value.email || '',
-            employeeId: currentUser.value.employeeId || '',
+            prefix: u.prefix || 'นาย',
+            name: stripKnownPrefix(u.name || ''),
+            departmentSelect: deptSel,
+            customDepartment: customDept,
+            department: u.department || '',
+            position: u.position || '',
+            phone: u.phone || '',
+            email: u.email || '',
+            employeeId: u.employeeId || '',
             password: ''
           };
           showProfileModal.value = true;
@@ -2766,14 +3241,85 @@
 
         async function saveOwnProfile() {
           try {
+            if (!profileForm.value.departmentSelect) {
+              alert('กรุณาเลือกสาขาวิชา / สังกัดหน่วยงาน');
+              return;
+            }
+            const isCustom = profileForm.value.departmentSelect === '__CUSTOM__';
+            const customName = String(profileForm.value.customDepartment || '').trim();
+            if (isCustom && !customName) {
+              alert('กรุณาระบุชื่อสาขาวิชา / สังกัดใหม่');
+              return;
+            }
+
+            const payload = {
+              prefix: profileForm.value.prefix,
+              name: profileForm.value.name,
+              position: profileForm.value.position,
+              phone: profileForm.value.phone,
+              email: profileForm.value.email,
+              employeeId: profileForm.value.employeeId,
+              password: profileForm.value.password,
+              isCustomDepartment: isCustom,
+              customDepartment: isCustom ? customName : '',
+              department: isCustom ? '' : profileForm.value.departmentSelect
+            };
+
             const res = await fetchAPI('/auth/profile', {
               method: 'PUT',
-              body: JSON.stringify(profileForm.value)
+              body: JSON.stringify(payload)
             });
             currentUser.value = res.data;
             localStorage.setItem('user', JSON.stringify(res.data));
             showProfileModal.value = false;
-            alert('บันทึกข้อมูลส่วนตัวเรียบร้อยแล้ว');
+            await loadPublicDepartments();
+            if (currentUser.value.role === 'teacher') {
+              await loadTeacherEvaluationSheet(selectedPeriodId.value);
+            } else if (currentUser.value.role === 'admin' || currentUser.value.role === 'hr') {
+              await loadInitialData();
+            }
+            if (res.data.deptStatus === 'PENDING') {
+              alert('บันทึกข้อมูลเรียบร้อยแล้ว คำขอเพิ่มสาขาวิชาใหม่ของท่านถูกส่งให้ฝ่ายบุคลากร (HR) พิจารณาอนุมัติ');
+            } else {
+              alert('บันทึกข้อมูลส่วนตัวเรียบร้อยแล้ว');
+            }
+          } catch (err) {
+            alert('เกิดข้อผิดพลาด: ' + err.message);
+          }
+        }
+
+        // Teacher Re-select Department After HR Rejection
+        async function submitReselectDepartment() {
+          try {
+            if (!reselectDeptForm.value.departmentSelect) {
+              alert('กรุณาเลือกสาขาวิชาใหม่');
+              return;
+            }
+            const isCustom = reselectDeptForm.value.departmentSelect === '__CUSTOM__';
+            const customName = String(reselectDeptForm.value.customDepartment || '').trim();
+            if (isCustom && !customName) {
+              alert('กรุณาระบุชื่อสาขาวิชาใหม่ที่ต้องการขอเพิ่ม');
+              return;
+            }
+
+            const res = await fetchAPI('/auth/profile', {
+              method: 'PUT',
+              body: JSON.stringify({
+                isCustomDepartment: isCustom,
+                customDepartment: isCustom ? customName : '',
+                department: isCustom ? '' : reselectDeptForm.value.departmentSelect
+              })
+            });
+            currentUser.value = res.data;
+            localStorage.setItem('user', JSON.stringify(res.data));
+            reselectDeptForm.value = { departmentSelect: '', customDepartment: '' };
+            await loadTeacherEvaluationSheet(selectedPeriodId.value);
+
+            if (res.data.deptStatus === 'APPROVED') {
+              alert(`เลือกสาขาวิชา "${res.data.department}" เรียบร้อยแล้ว ท่านสามารถส่งข้อมูลแบบประเมินตนเองได้ทันที`);
+            } else {
+              alert(`ส่งคำขอเพิ่มสาขาวิชา "${res.data.requestedDepartment}" ให้ฝ่ายบุคลากร (HR) พิจารณาใหม่เรียบร้อยแล้ว`);
+            }
           } catch (err) {
             alert('เกิดข้อผิดพลาด: ' + err.message);
           }
@@ -2798,21 +3344,23 @@
         async function loadInitialData() {
           if (!currentUser.value) return;
           try {
-            await loadPeriods();
+            await Promise.all([loadPeriods(), loadPublicDepartments()]);
             const role = currentUser.value.role;
             if (role === 'admin' || role === 'hr') {
-              const [usersRes, periodRes, metricsRes, assignRes, statsRes, deptRes, deptJudgesRes] = await Promise.all([
+              const [usersRes, periodRes, metricsRes, assignRes, statsRes, deptRes, deptJudgesRes, deptReqRes] = await Promise.all([
                 fetchAPI('/users'),
                 fetchAPI('/hr/period?periodId=' + selectedAdminPeriodId.value),
-                fetchAPI('/hr/metrics'),
+                fetchAPI('/hr/metrics?periodId=' + selectedAdminPeriodId.value),
                 fetchAPI('/hr/assignments?periodId=' + selectedAdminPeriodId.value),
                 fetchAPI('/hr/statistics?periodId=' + selectedAdminPeriodId.value),
                 fetchAPI('/hr/departments'),
-                fetchAPI('/hr/department-judges?periodId=' + selectedAdminPeriodId.value)
+                fetchAPI('/hr/department-judges?periodId=' + selectedAdminPeriodId.value),
+                fetchAPI('/hr/department-requests')
               ]);
               usersList.value = usersRes.data || usersRes.users || [];
               departmentsList.value = deptRes.data || [];
               departmentJudgesList.value = deptJudgesRes.data || [];
+              departmentRequests.value = deptReqRes.data || [];
               if (periodRes.data) {
                 period.value = {
                   id: periodRes.data.id,
@@ -2837,13 +3385,20 @@
 
         // Teacher Period Change
         async function onTeacherPeriodChange() {
+          isEditingSelfEval.value = false;
+          showEditSelfWarningModal.value = false;
           await loadTeacherEvaluationSheet(selectedPeriodId.value);
         }
 
         async function loadTeacherEvaluationSheet(pId) {
           try {
+            await loadPublicDepartments();
             const res = await fetchAPI('/evaluatee/sheet?periodId=' + pId);
             if (res.data) {
+              if (res.data.userProfile) {
+                currentUser.value = { ...currentUser.value, ...res.data.userProfile };
+                localStorage.setItem('user', JSON.stringify(currentUser.value));
+              }
               metrics.value = res.data.metrics || [];
               if (res.data.period) {
                 period.value = {
@@ -2854,10 +3409,17 @@
               }
               teacherSubmissionStatus.value = res.data.submissionStatus || 'DRAFT';
               teacherSubmittedAt.value = res.data.submittedAt || null;
+              isEditingSelfEval.value = false;
+
               const sMap = {}, cMap = {}, eMap = {};
+              (res.data.metrics || []).forEach(m => {
+                sMap[m.id] = '';
+              });
               if (res.data.selfScores) {
                 res.data.selfScores.forEach(s => {
-                  sMap[s.metricId] = s.selfScore;
+                  if (s.selfScore !== null && s.selfScore !== undefined) {
+                    sMap[s.metricId] = String(s.selfScore);
+                  }
                   if (s.teacherComment) cMap[s.metricId] = s.teacherComment;
                   if (s.evidenceUrl && !s.evidenceUrl.includes('example.com')) eMap[s.metricId] = s.evidenceUrl;
                 });
@@ -2888,6 +3450,16 @@
           try {
             const res = await fetchAPI('/judge/assigned?periodId=' + pId);
             judgeCandidates.value = res.data || [];
+            const activePeriod = allPeriods.value.find(p => Number(p.id) === Number(pId));
+            if (activePeriod) {
+              period.value = {
+                id: activePeriod.id,
+                name: activePeriod.name,
+                startDate: activePeriod.startDate || '',
+                endDate: activePeriod.endDate || '',
+                isOpen: Boolean(activePeriod.isOpen)
+              };
+            }
           } catch (e) {
             console.warn('Error loading judge candidates:', e.message);
           }
@@ -2896,8 +3468,9 @@
         // Admin Period Change
         async function onAdminPeriodSelectChange() {
           try {
-            const [periodRes, assignRes, deptJudgesRes, statsRes] = await Promise.all([
+            const [periodRes, metricsRes, assignRes, deptJudgesRes, statsRes] = await Promise.all([
               fetchAPI('/hr/period?periodId=' + selectedAdminPeriodId.value),
+              fetchAPI('/hr/metrics?periodId=' + selectedAdminPeriodId.value),
               fetchAPI('/hr/assignments?periodId=' + selectedAdminPeriodId.value),
               fetchAPI('/hr/department-judges?periodId=' + selectedAdminPeriodId.value),
               fetchAPI('/hr/statistics?periodId=' + selectedAdminPeriodId.value)
@@ -2911,6 +3484,7 @@
                 isOpen: Boolean(periodRes.data.isOpen)
               };
             }
+            metrics.value = metricsRes.data || [];
             assignments.value = assignRes.data || [];
             departmentJudgesList.value = deptJudgesRes.data || [];
             hrStats.value = statsRes.data || {};
@@ -2921,6 +3495,10 @@
 
         // Judge Select Candidate & Open Evaluation Workspace
         async function openCandidateGrading(candidate) {
+          if (!candidate.isSubmittedByTeacher) {
+            alert('ผู้รับการประเมินยังไม่ได้ส่งแบบประเมินตนเองในรอบนี้');
+            return;
+          }
           try {
             let assignmentId = candidate.assignmentId;
             if (!assignmentId) {
@@ -2946,15 +3524,25 @@
         async function selectJudgeCandidate(idx) {
           judgeSelectedIdx.value = idx;
           const cand = judgeCandidates.value[idx];
-          if (!cand || !cand.assignmentId) return;
+          if (!cand) return;
           try {
+            if (!cand.assignmentId) {
+              const initRes = await fetchAPI('/judge/init-assignment', {
+                method: 'POST',
+                body: JSON.stringify({
+                  teacherCitizenId: cand.teacherCitizenId,
+                  periodId: selectedPeriodId.value
+                })
+              });
+              cand.assignmentId = initRes.data.assignmentId;
+            }
             const res = await fetchAPI(`/judge/grading/${cand.assignmentId}`);
             if (res.data && res.data.metrics) {
               candidateGradingMetrics.value = res.data.metrics;
               const newScores = {};
               res.data.metrics.forEach(m => {
                 if (m.existingJudgeScore !== null && m.existingJudgeScore !== undefined) {
-                  newScores[m.metricId] = String(m.existingJudgeScore);
+                  newScores[m.metricId] = String(Number(m.existingJudgeScore));
                 } else {
                   newScores[m.metricId] = m.evalType === 'BOOLEAN' ? '4' : '3';
                 }
@@ -2975,57 +3563,163 @@
           judgeViewMode.value = 'list';
         }
 
-        // Print Triggers
-        function openIndividualReportModal(candidate) {
-          selectedReportItem.value = {
-            ...candidate,
-            periodName: period.value.name
-          };
-          printCandidateData.value = selectedReportItem.value;
-          showReportModal.value = true;
+        // Official PDF Report Builders & Print Triggers
+        async function openIndividualReportModal(candidate) {
+          try {
+            let assignmentId = candidate.assignmentId || candidate.id;
+            if (!assignmentId && currentUser.value && currentUser.value.role === 'judge' && candidate.teacherCitizenId) {
+              const initRes = await fetchAPI('/judge/init-assignment', {
+                method: 'POST',
+                body: JSON.stringify({
+                  teacherCitizenId: candidate.teacherCitizenId,
+                  periodId: selectedPeriodId.value
+                })
+              });
+              assignmentId = initRes.data.assignmentId;
+              candidate.assignmentId = assignmentId;
+            }
+
+            if (!assignmentId) {
+              alert('ยังไม่พบข้อมูลการประเมินสำหรับจัดทำรายงาน');
+              return;
+            }
+
+            const res = await fetchAPI(`/judge/grading/${assignmentId}`);
+            const asn = res.data?.assignment || {};
+            const mList = res.data?.metrics || [];
+            const sum = res.data?.summary || null;
+
+            const metricsRows = mList.map(m => {
+              let jScore = m.existingJudgeScore;
+              if (
+                (jScore === null || jScore === undefined) &&
+                judgeViewMode.value === 'workspace' &&
+                currentJudgeCandidate.value &&
+                Number(currentJudgeCandidate.value.assignmentId) === Number(assignmentId) &&
+                judgeScores.value[m.metricId] !== undefined
+              ) {
+                jScore = judgeScores.value[m.metricId];
+              }
+              return {
+                id: m.metricId || m.id,
+                title: m.title,
+                description: m.description || '',
+                weight: Number(m.weight) || 0,
+                teacherComment: m.teacherComment || '-',
+                selfScoreDisplay: formatSelfScoreDisplay(m.evalType, m.selfScore),
+                judgeScoreDisplay: formatJudgeScoreDisplay(jScore)
+              };
+            });
+
+            const totalWeight = metricsRows.reduce((acc, r) => acc + (Number(r.weight) || 0), 0);
+            const reportData = {
+              assignmentId,
+              periodName: asn.periodName || period.value.name,
+              teacherName: asn.teacherName || candidate.teacherName || '-',
+              teacherCitizenId: asn.teacherCitizenId || candidate.teacherCitizenId || '-',
+              department: asn.department || candidate.department || candidate.teacherDepartment || '-',
+              teacherDepartment: asn.department || candidate.teacherDepartment || candidate.department || '-',
+              position: asn.position || candidate.position || 'ครู',
+              judgeName: asn.judgeName || candidate.judgeName || (currentUser.value ? currentUser.value.name : '-'),
+              roleInBoard: asn.roleInBoard || candidate.roleInBoard || 'กรรมการผู้ประเมิน',
+              totalScore: sum && sum.totalScore !== null && sum.totalScore !== undefined
+                ? Number(sum.totalScore).toFixed(2)
+                : (candidate.totalScore || '-'),
+              overallFeedback: (sum && sum.overallFeedback) || candidate.overallFeedback || '',
+              metricsRows,
+              totalWeight
+            };
+
+            selectedReportItem.value = reportData;
+            printCandidateData.value = reportData;
+            showReportModal.value = true;
+          } catch (err) {
+            alert('ไม่สามารถโหลดข้อมูลรายงานได้: ' + err.message);
+          }
         }
 
-        function triggerPrintFromModal() {
+        async function triggerPrintFromModal() {
           printMode.value = 'individual';
           printCandidateData.value = selectedReportItem.value;
-          setTimeout(() => { window.print(); }, 150);
+          await nextTick();
+          setTimeout(() => { window.print(); }, 120);
         }
 
-        function triggerPrintIndividualForTeacher() {
+        async function triggerPrintIndividualForTeacher() {
+          if (!metrics.value || metrics.value.length === 0) {
+            await loadTeacherEvaluationSheet(selectedPeriodId.value);
+          }
           const currentJudge = teacherJudgeEvaluations.value[selectedJudgeEvalIdx.value] || teacherJudgeFeedback.value;
+          const metricScoresMap = (currentJudge && currentJudge.metricScores) ? currentJudge.metricScores : {};
+
+          const metricsRows = (metrics.value || []).map(m => ({
+            id: m.id,
+            title: m.title,
+            description: m.description || '',
+            weight: Number(m.weight) || 0,
+            teacherComment: teacherComments.value[m.id] || '-',
+            selfScoreDisplay: formatSelfScoreDisplay(m.evalType, teacherScores.value[m.id]),
+            judgeScoreDisplay: formatJudgeScoreDisplay(metricScoresMap[m.id])
+          }));
+          const totalWeight = metricsRows.reduce((acc, r) => acc + (Number(r.weight) || 0), 0);
+
           printMode.value = 'individual';
           printCandidateData.value = {
             teacherName: currentUser.value.name,
-            position: currentUser.value.position,
-            department: currentUser.value.department,
+            position: currentUser.value.position || 'ครู',
+            department: currentUser.value.department || '-',
             teacherCitizenId: currentUser.value.citizenId,
             judgeName: currentJudge ? currentJudge.judgeName : 'คณะกรรมการผู้ประเมิน',
             roleInBoard: currentJudge ? currentJudge.roleInBoard : 'กรรมการผู้ประเมิน',
             periodName: period.value.name,
             totalScore: currentJudge ? currentJudge.totalScore : '-',
             overallFeedback: currentJudge ? currentJudge.overallFeedback : '',
-            metricScores: currentJudge ? currentJudge.metricScores : {}
+            metricsRows,
+            totalWeight
           };
-          setTimeout(() => { window.print(); }, 150);
+          await nextTick();
+          setTimeout(() => { window.print(); }, 120);
         }
 
-        function triggerPrintConsolidated() {
+        async function triggerPrintConsolidated() {
+          if (!metrics.value || metrics.value.length === 0) {
+            await loadTeacherEvaluationSheet(selectedPeriodId.value);
+          }
+          const avgMap = (teacherConsolidatedSummary.value && teacherConsolidatedSummary.value.metricAverages)
+            ? teacherConsolidatedSummary.value.metricAverages
+            : {};
+
+          const metricsRows = (metrics.value || []).map(m => ({
+            id: m.id,
+            title: m.title,
+            description: m.description || '',
+            weight: Number(m.weight) || 0,
+            teacherComment: teacherComments.value[m.id] || '-',
+            selfScoreDisplay: formatSelfScoreDisplay(m.evalType, teacherScores.value[m.id]),
+            avgScoreDisplay: formatJudgeScoreDisplay(avgMap[m.id])
+          }));
+          const totalWeight = metricsRows.reduce((acc, r) => acc + (Number(r.weight) || 0), 0);
+
           printMode.value = 'consolidated';
           printCandidateData.value = {
             teacherName: currentUser.value.name,
-            position: currentUser.value.position,
-            department: currentUser.value.department,
+            position: currentUser.value.position || 'ครู',
+            department: currentUser.value.department || '-',
             teacherCitizenId: currentUser.value.citizenId,
             periodName: period.value.name,
             totalScore: teacherConsolidatedSummary.value ? teacherConsolidatedSummary.value.averageTotalScore : '-',
-            judgeCount: teacherJudgeEvaluations.value.length
+            judgeCount: teacherJudgeEvaluations.value.length,
+            metricsRows,
+            totalWeight
           };
-          setTimeout(() => { window.print(); }, 150);
+          await nextTick();
+          setTimeout(() => { window.print(); }, 120);
         }
 
-        function triggerPrintOverallReport() {
+        async function triggerPrintOverallReport() {
           printMode.value = 'overall';
-          setTimeout(() => { window.print(); }, 150);
+          await nextTick();
+          setTimeout(() => { window.print(); }, 120);
         }
 
         // Filtered Judge Candidates & Stats
@@ -3051,7 +3745,10 @@
         // Teacher Progress
         const teacherProgress = computed(() => {
           if (!metrics.value.length) return 0;
-          const done = Object.keys(teacherScores.value).length;
+          const done = metrics.value.filter(m => {
+            const v = teacherScores.value[m.id];
+            return v !== undefined && v !== null && String(v).trim() !== '';
+          }).length;
           return Math.min(100, Math.round((done / metrics.value.length) * 100));
         });
 
@@ -3063,7 +3760,11 @@
           return usersList.value.filter(u => {
             const matchRole = userFilterRole.value === 'ALL' || u.role === userFilterRole.value;
             const q = userSearchQuery.value.trim().toLowerCase();
-            const matchSearch = !q || (u.name && u.name.toLowerCase().includes(q)) || (u.citizenId && u.citizenId.includes(q));
+            const matchSearch = !q ||
+              (u.name && u.name.toLowerCase().includes(q)) ||
+              (u.citizenId && u.citizenId.includes(q)) ||
+              (u.department && u.department.toLowerCase().includes(q)) ||
+              (u.requestedDepartment && u.requestedDepartment.toLowerCase().includes(q));
             return matchRole && matchSearch;
           });
         });
@@ -3075,19 +3776,73 @@
         function openUserModal(mode, user = null) {
           userModalMode.value = mode;
           if (mode === 'edit' && user) {
-            userModalForm.value = { ...user, password: '' };
+            userModalForm.value = {
+              id: user.id,
+              role: user.role || 'teacher',
+              prefix: user.prefix || 'นาย',
+              name: stripKnownPrefix(user.name || ''),
+              citizenId: user.citizenId || '',
+              departmentSelect: '',
+              customDepartment: '',
+              department: user.department || '',
+              deptStatus: user.deptStatus || 'APPROVED',
+              position: user.position || '',
+              password: ''
+            };
+            const opts = adminUserDepartmentOptions.value;
+            if (user.deptStatus === 'PENDING' && user.requestedDepartment) {
+              userModalForm.value.departmentSelect = '__CUSTOM__';
+              userModalForm.value.customDepartment = user.requestedDepartment;
+            } else if (user.department && opts.includes(user.department)) {
+              userModalForm.value.departmentSelect = user.department;
+            } else if (user.department) {
+              userModalForm.value.departmentSelect = '__CUSTOM__';
+              userModalForm.value.customDepartment = user.department;
+            }
           } else {
-            userModalForm.value = { id: null, role: 'teacher', prefix: 'นาย', name: '', citizenId: '', department: '', position: '', password: '' };
+            userModalForm.value = {
+              id: null,
+              role: 'teacher',
+              prefix: 'นาย',
+              name: '',
+              citizenId: '',
+              departmentSelect: '',
+              customDepartment: '',
+              department: '',
+              deptStatus: 'APPROVED',
+              position: '',
+              password: ''
+            };
           }
           showUserModal.value = true;
         }
 
         async function saveUserModal() {
           try {
+            if (!userModalForm.value.departmentSelect) {
+              alert('กรุณาเลือกสาขาวิชา / สังกัดหน่วยงาน');
+              return;
+            }
+            const isCustom = userModalForm.value.departmentSelect === '__CUSTOM__';
+            const resolvedDept = isCustom
+              ? String(userModalForm.value.customDepartment || '').trim()
+              : userModalForm.value.departmentSelect;
+
+            if (!resolvedDept) {
+              alert('กรุณาระบุชื่อสาขาวิชา / สังกัด');
+              return;
+            }
+
+            const payload = {
+              ...userModalForm.value,
+              department: resolvedDept
+            };
+
             if (userModalMode.value === 'add') {
-              await fetchAPI('/users', { method: 'POST', body: JSON.stringify(userModalForm.value) });
+              await fetchAPI('/users', { method: 'POST', body: JSON.stringify(payload) });
             } else {
-              await fetchAPI('/users/' + userModalForm.value.id, { method: 'PUT', body: JSON.stringify(userModalForm.value) });
+              const targetKey = userModalForm.value.citizenId || userModalForm.value.id;
+              await fetchAPI('/users/' + targetKey, { method: 'PUT', body: JSON.stringify(payload) });
             }
             showUserModal.value = false;
             await loadInitialData();
@@ -3097,10 +3852,10 @@
           }
         }
 
-        async function deleteUser(id) {
+        async function deleteUser(citizenIdOrId) {
           if (!confirm('คุณแน่ใจหรือไม่ว่าต้องการลบผู้ใช้งานนี้ออกจากระบบ?')) return;
           try {
-            await fetchAPI('/users/' + id, { method: 'DELETE' });
+            await fetchAPI('/users/' + citizenIdOrId, { method: 'DELETE' });
             await loadInitialData();
             alert('ลบผู้ใช้งานสำเร็จ');
           } catch (err) {
@@ -3120,12 +3875,62 @@
             return;
           }
           try {
-            await fetchAPI('/users/' + accountTargetUser.value.id + '/reset-password', {
+            const targetKey = accountTargetUser.value.citizenId || accountTargetUser.value.id;
+            await fetchAPI('/users/' + targetKey + '/reset-password', {
               method: 'PUT',
               body: JSON.stringify({ password: accountForm.value.password })
             });
             showAccountModal.value = false;
             alert('เปลี่ยนรหัสผ่านเรียบร้อยแล้ว');
+          } catch (err) {
+            alert(err.message);
+          }
+        }
+
+        // HR Custom Department Request Approval / Rejection Handlers
+        async function approveDepartmentRequest(reqItem) {
+          const deptName = reqItem.requestedDepartment;
+          if (!confirm(`ยืนยันการอนุมัติสาขาวิชา "${deptName}" ให้แก่ ${reqItem.name} และเพิ่มเข้าสู่รายชื่อสาขาวิชาในระบบใช่หรือไม่?`)) return;
+          try {
+            const codeVal = approveDeptCodes.value[reqItem.id] || '';
+            await fetchAPI(`/hr/department-requests/${reqItem.id}/approve`, {
+              method: 'POST',
+              body: JSON.stringify({
+                departmentName: deptName,
+                code: codeVal
+              })
+            });
+            approveDeptCodes.value[reqItem.id] = '';
+            await loadInitialData();
+            alert(`อนุมัติสาขาวิชา "${deptName}" เรียบร้อยแล้ว บุคลากรสามารถส่งแบบประเมินได้ทันที`);
+          } catch (err) {
+            alert(err.message);
+          }
+        }
+
+        function openRejectDeptModal(reqItem) {
+          rejectDeptTarget.value = reqItem;
+          rejectDeptReason.value = '';
+          showRejectDeptModal.value = true;
+        }
+
+        async function confirmRejectDepartmentRequest() {
+          if (!rejectDeptTarget.value) return;
+          const reason = String(rejectDeptReason.value || '').trim();
+          if (!reason) {
+            alert('กรุณาระบุเหตุผลที่ไม่อนุมัติ เพื่อแจ้งให้บุคลากรทราบ');
+            return;
+          }
+          try {
+            await fetchAPI(`/hr/department-requests/${rejectDeptTarget.value.id}/reject`, {
+              method: 'POST',
+              body: JSON.stringify({ reason })
+            });
+            showRejectDeptModal.value = false;
+            rejectDeptTarget.value = null;
+            rejectDeptReason.value = '';
+            await loadInitialData();
+            alert('บันทึกการไม่อนุมัติพร้อมส่งเหตุผลแจ้งบุคลากรเรียบร้อยแล้ว');
           } catch (err) {
             alert(err.message);
           }
@@ -3275,6 +4080,8 @@
               method: 'POST',
               body: JSON.stringify({
                 periodId: selectedAdminPeriodId.value || 1,
+                teacherId: newAssign.value.teacherCitizenId,
+                judgeId: newAssign.value.judgeCitizenId,
                 teacherCitizenId: newAssign.value.teacherCitizenId,
                 judgeCitizenId: newAssign.value.judgeCitizenId,
                 roleInBoard: newAssign.value.roleInBoard
@@ -3300,7 +4107,7 @@
           }
         }
 
-        // Teacher Actions
+        // Teacher Actions: Upload, Request Edit Unlock, Cancel Edit, & Submit Self Evaluation
         async function uploadTeacherFile(event, metricId) {
           const file = event.target.files[0];
           if (!file) return;
@@ -3321,25 +4128,73 @@
           }
         }
 
-        async function saveTeacherSelf() {
+        function requestEditSelfEval() {
+          if (!period.value.isOpen) {
+            alert('รอบการประเมินนี้ปิดการรับข้อมูลแล้ว ไม่สามารถขอแก้ไขข้อมูลได้');
+            return;
+          }
+          showEditSelfWarningModal.value = true;
+        }
+
+        function confirmUnlockSelfEval() {
+          showEditSelfWarningModal.value = false;
+          isEditingSelfEval.value = true;
+        }
+
+        async function cancelEditSelfEval() {
+          isEditingSelfEval.value = false;
+          await loadTeacherEvaluationSheet(selectedPeriodId.value);
+        }
+
+        async function saveTeacherSelf(isEditConfirm = false) {
+          if (!isTeacherDeptApproved.value) {
+            alert('ยังไม่สามารถส่งข้อมูลให้กรรมการได้ เนื่องจากสาขาวิชาของท่านยังไม่ได้รับการอนุมัติจากฝ่ายบุคลากร (HR)');
+            return;
+          }
+          if (!metrics.value || metrics.value.length === 0) {
+            alert('ยังไม่มีตัวชี้วัดในรอบการประเมินนี้');
+            return;
+          }
+          const missingMetric = metrics.value.find(
+            m => teacherScores.value[m.id] === undefined || teacherScores.value[m.id] === null || String(teacherScores.value[m.id]).trim() === ''
+          );
+          if (missingMetric) {
+            alert(`กรุณาเลือกระดับคะแนนประเมินตนเองให้ครบทุกตัวชี้วัดก่อนส่งข้อมูล\n(ยังไม่ได้เลือกข้อ: "${missingMetric.title}")`);
+            return;
+          }
+
+          if (isEditConfirm && teacherSubmissionStatus.value === 'SUBMITTED') {
+            const judgeCnt = teacherJudgeEvaluations.value.length;
+            const confirmMsg = judgeCnt > 0
+              ? `คำเตือนยืนยันครั้งสุดท้าย:\nขณะนี้มีกรรมการประเมินผลให้ท่านแล้ว ${judgeCnt} ท่าน\nเมื่อยืนยันการแก้ไข ผลคะแนนและข้อคิดเห็นเดิมทั้งหมดจะถูกลบออกทันที และกรรมการจะต้องประเมินใหม่\n\nท่านยืนยันที่จะบันทึกการแก้ไขข้อมูลใช่หรือไม่?`
+              : 'ยืนยันการบันทึกแก้ไขข้อมูลแบบประเมินตนเองและส่งให้คณะกรรมการใหม่ใช่หรือไม่?';
+            if (!confirm(confirmMsg)) return;
+          }
+
           try {
             const scoresPayload = metrics.value.map(m => ({
               metricId: m.id,
-              selfScore: teacherScores.value[m.id] || '3',
+              selfScore: String(teacherScores.value[m.id]),
               teacherComment: teacherComments.value[m.id] || '',
               evidenceUrl: teacherEvidence.value[m.id] || null
             }));
-            await fetchAPI('/evaluatee/self-submit', {
+            const res = await fetchAPI('/evaluatee/self-submit', {
               method: 'POST',
               body: JSON.stringify({
                 periodId: selectedPeriodId.value,
-                scores: scoresPayload
+                scores: scoresPayload,
+                isEditConfirm: Boolean(isEditConfirm)
               })
             });
+            isEditingSelfEval.value = false;
             teacherSubmissionStatus.value = 'SUBMITTED';
-            teacherSubmittedAt.value = new Date().toISOString();
-            alert('บันทึกและส่งผลการประเมินตนเองเรียบร้อยแล้ว\nสถานะ: รอผลการตรวจประเมินจากคณะกรรมการ');
+            teacherSubmittedAt.value = res.data?.submittedAt || new Date().toISOString();
             await loadTeacherEvaluationSheet(selectedPeriodId.value);
+            if (isEditConfirm) {
+              alert('บันทึกการแก้ไขและส่งข้อมูลใหม่เรียบร้อยแล้ว\nผลคะแนนที่กรรมการประเมินไว้ตอนแรกถูกรีเซ็ตแล้ว สถานะปัจจุบัน: รอผลการตรวจประเมินใหม่จากคณะกรรมการ');
+            } else {
+              alert('บันทึกและส่งผลการประเมินตนเองเรียบร้อยแล้ว\nข้อมูลถูกล็อกป้องกันการส่งซ้ำ สถานะปัจจุบัน: รอผลการตรวจประเมินจากคณะกรรมการ');
+            }
           } catch (err) {
             alert(err.message);
           }
@@ -3433,6 +4288,7 @@
         }
 
         onMounted(async () => {
+          await loadPublicDepartments();
           const savedUser = localStorage.getItem('user');
           if (token.value && savedUser) {
             try {
@@ -3446,17 +4302,28 @@
 
         return {
           authMode, isAuthLoading, authError, authSuccess, showPassword, loginForm, regForm, regSigMode, regConsent,
+          publicDepartments, loadPublicDepartments, switchToRegister,
           currentUser, login, registerUser, logout, quickLogin,
-          showProfileModal, profileForm, openProfileModal, saveOwnProfile,
+          formatUserDisplayName, stripKnownPrefix,
+          showProfileModal, profileForm, profileDepartmentOptions, openProfileModal, saveOwnProfile,
+          reselectDeptForm, submitReselectDepartment,
           allPeriods, selectedPeriodId, selectedAdminPeriodId, period, onTeacherPeriodChange, onJudgePeriodChange, onAdminPeriodSelectChange,
           startDraw, drawing, stopDraw, touchStart, touchMove, clearIndexCanvas, captureIndexCanvas, onRegisterSigUpload,
-          adminTab, usersList, userFilterRole, userSearchQuery, filteredUsers, showUserModal, userModalMode, userModalForm, openUserModal, saveUserModal, deleteUser,
+          adminTab, usersList, userFilterRole, userSearchQuery, filteredUsers,
+          showUserModal, userModalMode, userModalForm, adminUserDepartmentOptions, openUserModal, saveUserModal, deleteUser,
           showAccountModal, accountTargetUser, accountForm, openAccountModal, saveAccountModal,
           showEditMetricModal, editMetricForm, openEditMetricModal, saveEditMetric,
           departmentsList, departmentJudgesList, newDept, newDeptJudge, addDepartment, removeDepartment, assignJudgeToDepartment, removeJudgeFromDepartment,
+          departmentRequests, pendingDepartmentRequests, approveDeptCodes, approveDepartmentRequest,
+          showRejectDeptModal, rejectDeptTarget, rejectDeptReason, openRejectDeptModal, confirmRejectDepartmentRequest,
           metrics, totalMetricWeight, assignments, hrStats, newMetric, newAssign, teachers, judges, savePeriod, addMetric, deleteMetric, saveAssign, removeAssignment,
-          showReportModal, selectedReportItem, printMode, printCandidateData, openIndividualReportModal, triggerPrintFromModal, triggerPrintIndividualForTeacher, triggerPrintConsolidated, triggerPrintOverallReport,
-          teacherTab, teacherScores, teacherComments, teacherEvidence, teacherSubmissionStatus, teacherSubmittedAt, teacherJudgeFeedback, teacherJudgeMetricScores, teacherJudgeEvaluations, teacherConsolidatedSummary, selectedJudgeEvalIdx, currentSelectedJudgeEval, teacherProgress, uploadTeacherFile, saveTeacherSelf,
+          showReportModal, selectedReportItem, printMode, printCandidateData,
+          openIndividualReportModal, triggerPrintFromModal, triggerPrintIndividualForTeacher, triggerPrintConsolidated, triggerPrintOverallReport,
+          teacherTab, teacherScores, teacherComments, teacherEvidence, teacherSubmissionStatus, teacherSubmittedAt,
+          isTeacherDeptApproved, isTeacherFormLocked, isEditingSelfEval, showEditSelfWarningModal,
+          requestEditSelfEval, confirmUnlockSelfEval, cancelEditSelfEval,
+          loadTeacherEvaluationSheet, teacherProgress, uploadTeacherFile, saveTeacherSelf,
+          teacherJudgeFeedback, teacherJudgeMetricScores, teacherJudgeEvaluations, teacherConsolidatedSummary, selectedJudgeEvalIdx, currentSelectedJudgeEval,
           judgeViewMode, judgeCandidates, judgeSelectedIdx, currentJudgeCandidate, candidateGradingMetrics, judgeScores, judgeOverallFeedback,
           candidateSearchQuery, candidateFilterStatus, filteredJudgeCandidates, judgeStats,
           openCandidateGrading, selectJudgeCandidate, onJudgeCandidateDropdownChange, backToCandidateList, submitJudgeScore,

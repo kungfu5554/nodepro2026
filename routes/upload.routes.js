@@ -5,14 +5,13 @@ const multer = require('multer');
 const upload = require('../middleware/upload.middleware');
 const { authenticateToken } = require('../middleware/auth.middleware');
 
-// File upload endpoint (Criteria 6.3: File Upload PDF / Images)
-router.post('/', authenticateToken, (req, res, next) => {
-  upload.single('file')(req, res, (err) => {
+function handleUpload(req, res) {
+  upload.any()(req, res, (err) => {
     if (err instanceof multer.MulterError) {
       if (err.code === 'LIMIT_FILE_SIZE') {
         return res.status(413).json({
           status: 'error',
-          message: 'File size exceeds maximum allowed limit of 10MB.',
+          message: 'ขนาดไฟล์เกินกำหนดสูงสุด 10MB',
           data: null
         });
       }
@@ -21,28 +20,33 @@ router.post('/', authenticateToken, (req, res, next) => {
       return res.status(err.status || 400).json({ status: 'error', message: err.message, data: null });
     }
 
-    if (!req.file) {
+    const uploadedFile = req.file || (req.files && req.files.length > 0 ? req.files[0] : null);
+    if (!uploadedFile) {
       return res.status(400).json({
         status: 'error',
-        message: 'No file uploaded or file rejected.',
+        message: 'ไม่พบไฟล์ที่อัปโหลด หรือประเภทไฟล์ไม่ถูกต้อง',
         data: null
       });
     }
 
-    const fileUrl = `/uploads/${req.file.filename}`;
+    const fileUrl = `/uploads/${uploadedFile.filename}`;
 
     res.status(200).json({
       status: 'success',
-      message: 'File uploaded successfully.',
+      message: 'อัปโหลดไฟล์สำเร็จ',
       data: {
-        filename: req.file.filename,
-        originalName: req.file.originalname,
-        mimetype: req.file.mimetype,
-        size: req.file.size,
+        filename: uploadedFile.filename,
+        originalName: uploadedFile.originalname,
+        mimetype: uploadedFile.mimetype,
+        size: uploadedFile.size,
         fileUrl
       }
     });
   });
-});
+}
+
+// Support both /api/upload and /api/upload/evidence
+router.post('/', authenticateToken, handleUpload);
+router.post('/evidence', authenticateToken, handleUpload);
 
 module.exports = router;

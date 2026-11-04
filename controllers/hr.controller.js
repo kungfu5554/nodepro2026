@@ -233,11 +233,15 @@ async function getAssignments(req, res, next) {
     const [rows] = await pool.query(`
       SELECT 
         a.id,
+        a.id AS assignmentId,
         a.period_id AS periodId,
         a.teacher_citizen_id AS teacherId,
+        a.teacher_citizen_id AS teacherCitizenId,
         u_t.name AS teacherName,
         u_t.department AS teacherDepartment,
+        u_t.department AS department,
         u_t.position AS teacherPosition,
+        u_t.position AS position,
         a.judge_citizen_id AS judgeId,
         u_j.name AS judgeName,
         a.role_in_board AS roleInBoard,
@@ -347,6 +351,13 @@ async function getStatistics(req, res, next) {
     // Total counts
     const [[{ totalTeachers }]] = await pool.query("SELECT COUNT(*) AS totalTeachers FROM users WHERE role = 'teacher'");
     const [[{ totalJudges }]] = await pool.query("SELECT COUNT(*) AS totalJudges FROM users WHERE role = 'judge'");
+    const [[{ pendingDeptRequests }]] = await pool.query("SELECT COUNT(*) AS pendingDeptRequests FROM users WHERE dept_status = 'PENDING'");
+    const [[{ submittedTeachers }]] = await pool.query(`
+      SELECT COUNT(*) AS submittedTeachers
+      FROM teacher_submissions ts
+      INNER JOIN users u ON ts.teacher_citizen_id = u.citizen_id
+      WHERE ts.period_id = ? AND ts.status = 'SUBMITTED' AND u.role = 'teacher' AND u.dept_status = 'APPROVED'
+    `, [periodId]);
 
     // Assignment status breakdown
     const [[{ totalAssignments }]] = await pool.query('SELECT COUNT(*) AS totalAssignments FROM assignments WHERE period_id = ?', [periodId]);
@@ -359,7 +370,7 @@ async function getStatistics(req, res, next) {
       SELECT COALESCE(AVG(es.total_score), 0) AS avgScore
       FROM evaluation_summaries es
       JOIN assignments a ON es.assignment_id = a.id
-      WHERE a.period_id = ?
+      WHERE a.period_id = ? AND a.status = 'EVALUATED'
     `, [periodId]);
 
     res.status(200).json({
@@ -368,6 +379,8 @@ async function getStatistics(req, res, next) {
       data: {
         totalTeachers,
         totalJudges,
+        pendingDeptRequests,
+        submittedTeachers,
         totalAssignments,
         pendingAssignments,
         submittedAssignments,
@@ -392,7 +405,7 @@ async function getDepartments(req, res, next) {
         d.id,
         d.name,
         d.code,
-        (SELECT COUNT(*) FROM users u WHERE u.role = 'teacher' AND u.department = d.name) AS teacherCount,
+        (SELECT COUNT(*) FROM users u WHERE u.role = 'teacher' AND u.department = d.name AND u.dept_status = 'APPROVED') AS teacherCount,
         (SELECT COUNT(DISTINCT dj.judge_citizen_id) FROM department_judges dj WHERE dj.department_name = d.name) AS judgeCount,
         d.created_at AS createdAt
       FROM departments d
@@ -416,43 +429,71 @@ async function createDepartment(req, res, next) {
     if (!name || name.trim() === '') {
       return res.status(400).json({
         status: 'error',
-        message: 'Department name is required.',
+        message: 'กรุณากรอกชื่อสาขาวิชา/แผนก',
         data: null
       });
     }
 
-    const [existing] = await pool.query('SELECT id FROM departments WHERE name = ?', [name.trim()]);
+    const cleanName = name.trim();
+    const [existing] = await pool.query('SELECT id FROM departments WHERE name = ?', [cleanName]);
     if (existing.length > 0) {
       return res.status(409).json({
         status: 'error',
-        message: 'Department name already exists.',
+        message: 'ชื่อสาขาวิชานี้มีอยู่ในระบบแล้ว',
         data: null
       });
     }
 
     const [result] = await pool.query(
       'INSERT INTO departments (name, code) VALUES (?, ?)',
-      [name.trim(), code ? code.trim() : null]
+      [cleanName, code ? code.trim() : null]
     );
+
+    // Auto-approve any pending teacher requests waiting for this exact department name
+    await pool.query(`
+      UPDATE users
+      SET department = ?, dept_status = 'APPROVED', requested_department = NULL, dept_reject_reason = NULL
+      WHERE dept_status = 'PENDING' AND requested_department = ?
+    `, [cleanName, cleanName]);
 
     res.status(201).json({
       status: 'success',
-      message: 'Department created successfully.',
-      data: { id: result.insertId, name: name.trim(), code: code ? code.trim() : null }
+      message: 'เพิ่มสาขาวิชาเรียบร้อยแล้ว',
+      data: { id: result.insertId, name: cleanName, code: code ? code.trim() : null }
     });
   } catch (error) {
     next(error);
   }
 }
 
-// Delete department
+// Delete department safely
 async function deleteDepartment(req, res, next) {
   try {
     const { id } = req.params;
+    const [depts] = await pool.query('SELECT id, name FROM departments WHERE id = ?', [id]);
+    if (depts.length === 0) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'ไม่พบข้อมูลสาขาวิชา',
+        data: null
+      });
+    }
+
+    const deptName = depts[0].name;
+    const [[{ userCount }]] = await pool.query('SELECT COUNT(*) AS userCount FROM users WHERE department = ?', [deptName]);
+    if (userCount > 0) {
+      return res.status(400).json({
+        status: 'error',
+        message: `ไม่สามารถลบสาขาวิชา "${deptName}" ได้ เนื่องจากยังมีบุคลากรสังกัดอยู่ ${userCount} คน กรุณาย้ายสังกัดบุคลากรก่อนลบ`,
+        data: null
+      });
+    }
+
+    await pool.query('DELETE FROM department_judges WHERE department_name = ?', [deptName]);
     await pool.query('DELETE FROM departments WHERE id = ?', [id]);
     res.status(200).json({
       status: 'success',
-      message: 'Department deleted successfully.',
+      message: 'ลบสาขาวิชาเรียบร้อยแล้ว',
       data: null
     });
   } catch (error) {
@@ -502,7 +543,7 @@ async function assignDepartmentJudge(req, res, next) {
     if (!departmentName || !judgeCitizenId) {
       return res.status(400).json({
         status: 'error',
-        message: 'Department name and judge citizen ID are required.',
+        message: 'กรุณาเลือกสาขาวิชาและกรรมการผู้ประเมิน',
         data: null
       });
     }
@@ -515,7 +556,7 @@ async function assignDepartmentJudge(req, res, next) {
 
     res.status(201).json({
       status: 'success',
-      message: 'Judge assigned to department successfully.',
+      message: 'แต่งตั้งกรรมการประจำสาขาวิชาเรียบร้อยแล้ว',
       data: { id: result.insertId }
     });
   } catch (error) {
@@ -530,7 +571,148 @@ async function removeDepartmentJudge(req, res, next) {
     await pool.query('DELETE FROM department_judges WHERE id = ?', [id]);
     res.status(200).json({
       status: 'success',
-      message: 'Judge removed from department successfully.',
+      message: 'ถอดถอนกรรมการออกจากสาขาวิชาเรียบร้อยแล้ว',
+      data: null
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// ============================================================================
+// 7. Custom Department Requests Approval / Rejection by HR
+// ============================================================================
+
+async function getDepartmentRequests(req, res, next) {
+  try {
+    const [rows] = await pool.query(`
+      SELECT 
+        id,
+        citizen_id AS citizenId,
+        prefix,
+        name,
+        role,
+        position,
+        phone,
+        email,
+        department,
+        dept_status AS deptStatus,
+        requested_department AS requestedDepartment,
+        dept_reject_reason AS deptRejectReason,
+        created_at AS createdAt,
+        updated_at AS updatedAt
+      FROM users
+      WHERE dept_status IN ('PENDING', 'REJECTED')
+      ORDER BY FIELD(dept_status, 'PENDING', 'REJECTED'), updated_at DESC
+    `);
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Department requests retrieved.',
+      data: rows
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function approveDepartmentRequest(req, res, next) {
+  const conn = await pool.getConnection();
+  try {
+    const { userId } = req.params;
+    const { departmentName, code } = req.body || {};
+
+    const [users] = await conn.query(
+      'SELECT * FROM users WHERE id = ? OR citizen_id = ? LIMIT 1',
+      [userId, userId]
+    );
+    if (users.length === 0) {
+      conn.release();
+      return res.status(404).json({
+        status: 'error',
+        message: 'ไม่พบข้อมูลบุคลากรที่ส่งคำขอ',
+        data: null
+      });
+    }
+
+    const userRow = users[0];
+    const approvedName = String(departmentName || userRow.requested_department || '').trim();
+    if (!approvedName) {
+      conn.release();
+      return res.status(400).json({
+        status: 'error',
+        message: 'ไม่พบชื่อสาขาวิชาที่จะอนุมัติ',
+        data: null
+      });
+    }
+
+    await conn.beginTransaction();
+
+    await conn.query(
+      'INSERT INTO departments (name, code) VALUES (?, ?) ON DUPLICATE KEY UPDATE code = COALESCE(VALUES(code), code)',
+      [approvedName, code && String(code).trim() ? String(code).trim() : null]
+    );
+
+    // Approve this user and any other pending users who requested the exact same department name
+    await conn.query(`
+      UPDATE users
+      SET department = ?,
+          dept_status = 'APPROVED',
+          requested_department = NULL,
+          dept_reject_reason = NULL
+      WHERE id = ? OR (dept_status = 'PENDING' AND requested_department = ?)
+    `, [approvedName, userRow.id, userRow.requested_department || approvedName]);
+
+    await conn.commit();
+    conn.release();
+
+    res.status(200).json({
+      status: 'success',
+      message: `อนุมัติสาขาวิชา "${approvedName}" เรียบร้อยแล้ว`,
+      data: { departmentName: approvedName }
+    });
+  } catch (error) {
+    await conn.rollback();
+    conn.release();
+    next(error);
+  }
+}
+
+async function rejectDepartmentRequest(req, res, next) {
+  try {
+    const { userId } = req.params;
+    const { reason } = req.body || {};
+
+    if (!reason || String(reason).trim() === '') {
+      return res.status(400).json({
+        status: 'error',
+        message: 'กรุณาระบุเหตุผลที่ไม่อนุมัติสาขาวิชา เพื่อแจ้งให้ผู้รับการประเมินทราบ',
+        data: null
+      });
+    }
+
+    const [users] = await pool.query(
+      'SELECT * FROM users WHERE id = ? OR citizen_id = ? LIMIT 1',
+      [userId, userId]
+    );
+    if (users.length === 0) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'ไม่พบข้อมูลบุคลากรที่ส่งคำขอ',
+        data: null
+      });
+    }
+
+    await pool.query(`
+      UPDATE users
+      SET dept_status = 'REJECTED',
+          dept_reject_reason = ?
+      WHERE id = ?
+    `, [String(reason).trim(), users[0].id]);
+
+    res.status(200).json({
+      status: 'success',
+      message: 'บันทึกการไม่อนุมัติพร้อมแจ้งเหตุผลให้บุคลากรทราบเรียบร้อยแล้ว',
       data: null
     });
   } catch (error) {
@@ -555,5 +737,8 @@ module.exports = {
   deleteDepartment,
   getDepartmentJudges,
   assignDepartmentJudge,
-  removeDepartmentJudge
+  removeDepartmentJudge,
+  getDepartmentRequests,
+  approveDepartmentRequest,
+  rejectDepartmentRequest
 };

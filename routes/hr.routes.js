@@ -30,6 +30,11 @@ router.get('/departments', hrController.getDepartments);
 router.post('/departments', requireRole('admin', 'hr'), hrController.createDepartment);
 router.delete('/departments/:id', requireRole('admin', 'hr'), hrController.deleteDepartment);
 
+// Custom Department Approval / Rejection by HR
+router.get('/department-requests', requireRole('admin', 'hr'), hrController.getDepartmentRequests);
+router.post('/department-requests/:userId/approve', requireRole('admin', 'hr'), hrController.approveDepartmentRequest);
+router.post('/department-requests/:userId/reject', requireRole('admin', 'hr'), hrController.rejectDepartmentRequest);
+
 // Department Judges management
 router.get('/department-judges', hrController.getDepartmentJudges);
 router.post('/department-judges', requireRole('admin', 'hr'), hrController.assignDepartmentJudge);

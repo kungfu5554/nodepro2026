@@ -47,6 +47,9 @@ async function initializeDatabase(maxRetries = 10, delayMs = 3000) {
           role ENUM('admin', 'hr', 'teacher', 'judge') NOT NULL,
           role_title VARCHAR(100) NOT NULL,
           department VARCHAR(150) DEFAULT NULL,
+          dept_status ENUM('APPROVED', 'PENDING', 'REJECTED') NOT NULL DEFAULT 'APPROVED',
+          requested_department VARCHAR(150) DEFAULT NULL,
+          dept_reject_reason TEXT DEFAULT NULL,
           position VARCHAR(100) DEFAULT NULL,
           email VARCHAR(120) DEFAULT NULL,
           phone VARCHAR(50) DEFAULT NULL,
@@ -62,6 +65,9 @@ async function initializeDatabase(maxRetries = 10, delayMs = 3000) {
       try { await pool.query('ALTER TABLE users ADD COLUMN email VARCHAR(120) DEFAULT NULL;'); } catch (e) {}
       try { await pool.query('ALTER TABLE users ADD COLUMN phone VARCHAR(50) DEFAULT NULL;'); } catch (e) {}
       try { await pool.query('ALTER TABLE users ADD COLUMN employee_id VARCHAR(50) DEFAULT NULL;'); } catch (e) {}
+      try { await pool.query("ALTER TABLE users ADD COLUMN dept_status ENUM('APPROVED', 'PENDING', 'REJECTED') NOT NULL DEFAULT 'APPROVED';"); } catch (e) {}
+      try { await pool.query('ALTER TABLE users ADD COLUMN requested_department VARCHAR(150) DEFAULT NULL;'); } catch (e) {}
+      try { await pool.query('ALTER TABLE users ADD COLUMN dept_reject_reason TEXT DEFAULT NULL;'); } catch (e) {}
       try { await pool.query('ALTER TABLE users MODIFY signature_url LONGTEXT DEFAULT NULL;'); } catch (e) {}
       try { await pool.query('ALTER TABLE users MODIFY citizen_id VARCHAR(50) NOT NULL;'); } catch (e) {}
 
@@ -206,32 +212,27 @@ async function initializeDatabase(maxRetries = 10, delayMs = 3000) {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
       `);
 
-      // 3. Seed initial evaluation periods
+      // 3. Seed initial evaluation periods (preserve live Admin changes)
       await pool.query(`
-        INSERT INTO evaluation_periods (id, name, start_date, end_date, is_open)
+        INSERT IGNORE INTO evaluation_periods (id, name, start_date, end_date, is_open)
         VALUES 
           (1, 'รอบการประเมินที่ 1 ประจำปีการศึกษา 2568', '2026-10-01', '2026-11-30', 1),
-          (2, 'รอบการประเมินที่ 2 ประจำปีการศึกษา 2567', '2026-04-01', '2026-05-31', 0)
-        ON DUPLICATE KEY UPDATE 
-          name = VALUES(name),
-          start_date = VALUES(start_date),
-          end_date = VALUES(end_date),
-          is_open = VALUES(is_open);
+          (2, 'รอบการประเมินที่ 2 ประจำปีการศึกษา 2567', '2026-04-01', '2026-05-31', 0);
       `);
 
-      // 4. Seed initial metrics
+      // 4. Seed initial metrics for Period 1 and Period 2
       await pool.query(`
-        INSERT INTO metrics (id, period_id, title, description, weight, eval_type, evidence_type)
+        INSERT IGNORE INTO metrics (id, period_id, title, description, weight, eval_type, evidence_type)
         VALUES
           (1, 1, 'ด้านการจัดการเรียนรู้และการพัฒนาผู้เรียน', 'การจัดทำแผนการจัดการเรียนรู้และสื่อการสอน', 40, 'SCALE', 'PDF'),
           (2, 1, 'ด้านการพัฒนาตนเองและวิชาชีพ', 'การเข้ารับการอบรมและพัฒนาสมรรถนะวิชาชีพ', 30, 'SCALE', 'URL'),
-          (3, 1, 'การมีส่วนร่วมในกิจกรรมสถานศึกษา', 'การเข้าร่วมโครงการและกิจกรรมของสถานศึกษา', 30, 'BOOLEAN', 'IMAGE')
-        ON DUPLICATE KEY UPDATE 
-          title = VALUES(title),
-          description = VALUES(description);
+          (3, 1, 'การมีส่วนร่วมในกิจกรรมสถานศึกษา', 'การเข้าร่วมโครงการและกิจกรรมของสถานศึกษา', 30, 'BOOLEAN', 'IMAGE'),
+          (4, 2, 'ด้านการจัดการเรียนรู้และการพัฒนาผู้เรียน', 'การจัดทำแผนการจัดการเรียนรู้และสื่อการสอน', 40, 'SCALE', 'PDF'),
+          (5, 2, 'ด้านการพัฒนาตนเองและวิชาชีพ', 'การเข้ารับการอบรมและพัฒนาสมรรถนะวิชาชีพ', 30, 'SCALE', 'URL'),
+          (6, 2, 'การมีส่วนร่วมในกิจกรรมสถานศึกษา', 'การเข้าร่วมโครงการและกิจกรรมของสถานศึกษา', 30, 'BOOLEAN', 'IMAGE');
       `);
 
-      // 5. Seed default test accounts
+      // 5. Seed default test accounts (do not overwrite live profile edits)
       const defaultUsers = [
         {
           citizen_id: '1100000000000',
@@ -300,68 +301,96 @@ async function initializeDatabase(maxRetries = 10, delayMs = 3000) {
         if (existing.length === 0) {
           const hashedPassword = await bcrypt.hash(u.password, 10);
           await pool.query(`
-            INSERT INTO users (citizen_id, password, prefix, name, role, role_title, department, position)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO users (citizen_id, password, prefix, name, role, role_title, department, dept_status, position)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'APPROVED', ?)
           `, [u.citizen_id, hashedPassword, u.prefix, u.name, u.role, u.role_title, u.department, u.position]);
-        } else {
-          // If password doesn't match default password, update it so default seed accounts always work
-          const isMatch = await bcrypt.compare(u.password, existing[0].password).catch(() => false);
-          const hashedPassword = isMatch ? existing[0].password : await bcrypt.hash(u.password, 10);
-          await pool.query(`
-            UPDATE users 
-            SET password = ?, prefix = ?, name = ?, role = ?, role_title = ?, department = ?, position = ?
-            WHERE citizen_id = ?
-          `, [hashedPassword, u.prefix, u.name, u.role, u.role_title, u.department, u.position, u.citizen_id]);
+        } else if (!existing[0].password || !existing[0].password.startsWith('$2')) {
+          const hashedPassword = await bcrypt.hash(u.password, 10);
+          await pool.query('UPDATE users SET password = ? WHERE citizen_id = ?', [hashedPassword, u.citizen_id]);
         }
       }
 
       // 6. Seed initial departments
       await pool.query(`
-        INSERT INTO departments (name, code)
+        INSERT IGNORE INTO departments (name, code)
         VALUES 
           ('แผนกวิชาเทคโนโลยีสารสนเทศ', 'IT'),
           ('แผนกวิชาคอมพิวเตอร์ธุรกิจ', 'BC'),
           ('แผนกวิชาการบัญชี', 'ACC'),
           ('แผนกวิชาช่างยนต์', 'AUTO'),
-          ('แผนกวิชาการจัดการโลจิสติกส์', 'LOG')
-        ON DUPLICATE KEY UPDATE code = VALUES(code);
+          ('แผนกวิชาการจัดการโลจิสติกส์', 'LOG');
       `);
 
-      // 7. Seed department judges (Judges assigned by department)
+      // 7. Seed department judges (Judges assigned by department for Period 1 & 2)
       await pool.query(`
-        INSERT INTO department_judges (department_name, judge_citizen_id, period_id, role_in_board)
+        INSERT IGNORE INTO department_judges (department_name, judge_citizen_id, period_id, role_in_board)
         VALUES 
           ('แผนกวิชาเทคโนโลยีสารสนเทศ', '1100300000003', 1, 'ประธานกรรมการ'),
           ('แผนกวิชาเทคโนโลยีสารสนเทศ', '1100500000005', 1, 'กรรมการผู้ทรงคุณวุฒิ'),
-          ('แผนกวิชาคอมพิวเตอร์ธุรกิจ', '1100300000003', 1, 'ประธานกรรมการ')
-        ON DUPLICATE KEY UPDATE role_in_board = VALUES(role_in_board);
+          ('แผนกวิชาคอมพิวเตอร์ธุรกิจ', '1100300000003', 1, 'ประธานกรรมการ'),
+          ('แผนกวิชาเทคโนโลยีสารสนเทศ', '1100300000003', 2, 'ประธานกรรมการ'),
+          ('แผนกวิชาเทคโนโลยีสารสนเทศ', '1100500000005', 2, 'กรรมการผู้ทรงคุณวุฒิ'),
+          ('แผนกวิชาคอมพิวเตอร์ธุรกิจ', '1100300000003', 2, 'ประธานกรรมการ');
       `);
 
-      // 8. Seed teacher submissions
+      // 8. Seed candidate 2 self-evaluations so candidate 2 is ready for grading
       await pool.query(`
-        INSERT INTO teacher_submissions (period_id, teacher_citizen_id, status)
-        VALUES 
-          (1, '1100400000004', 'SUBMITTED'),
-          (1, '1100200000002', 'SUBMITTED')
-        ON DUPLICATE KEY UPDATE status = VALUES(status);
-      `);
-
-      // 9. Seed initial assignments (Multiple evaluatees for presentation demo)
-      await pool.query(`
-        INSERT INTO assignments (id, period_id, teacher_citizen_id, judge_citizen_id, role_in_board, status)
-        VALUES 
-          (1, 1, '1100200000002', '1100300000003', 'ประธานกรรมการ', 'PENDING'),
-          (2, 1, '1100400000004', '1100300000003', 'ประธานกรรมการ', 'SUBMITTED')
-        ON DUPLICATE KEY UPDATE role_in_board = VALUES(role_in_board);
-      `);
-
-      // Seed candidate 2 self-evaluations so candidate 2 is ready for grading
-      await pool.query(`
-        INSERT IGNORE INTO self_evaluations (period_id, teacher_citizen_id, metric_id, self_score, evidence_url)
+        INSERT IGNORE INTO self_evaluations (period_id, teacher_citizen_id, metric_id, self_score, teacher_comment, evidence_url)
         VALUES
-          (1, '1100400000004', 1, '4', 'https://example.com/kanda-lesson-plan.pdf'),
-          (1, '1100400000004', 2, '3', 'https://example.com/training-cert.pdf'),
-          (1, '1100400000004', 3, 'มี', NULL);
+          (1, '1100400000004', 1, '4', 'จัดทำแผนการจัดการเรียนรู้ฐานสมรรถนะและสื่อการสอนออนไลน์ครบถ้วนทุกรายวิชา', NULL),
+          (1, '1100400000004', 2, '3', 'เข้าร่วมอบรมเชิงปฏิบัติการพัฒนาทักษะดิจิทัลสำหรับการจัดการเรียนการสอน 24 ชั่วโมง', NULL),
+          (1, '1100400000004', 3, 'มี', 'ปฏิบัติหน้าที่ครูที่ปรึกษาและร่วมกิจกรรมพัฒนาผู้เรียนของสถานศึกษาอย่างสม่ำเสมอ', NULL);
+      `);
+
+      // Clean up any legacy placeholder example.com URLs
+      await pool.query("UPDATE self_evaluations SET evidence_url = NULL WHERE evidence_url LIKE '%example.com%';");
+
+      // 9. Seed teacher submission for candidate 2 (without overwriting live submissions)
+      await pool.query(`
+        INSERT IGNORE INTO teacher_submissions (period_id, teacher_citizen_id, status)
+        VALUES (1, '1100400000004', 'SUBMITTED');
+      `);
+
+      // Remove any orphan teacher_submissions whose user no longer exists
+      await pool.query(`
+        DELETE ts FROM teacher_submissions ts
+        LEFT JOIN users u ON u.citizen_id = ts.teacher_citizen_id
+        WHERE u.id IS NULL;
+      `);
+
+      // Migrate any legacy teacher records with unapproved free-text departments to PENDING HR approval
+      await pool.query(`
+        UPDATE users u
+        LEFT JOIN departments d ON d.name = u.department
+        SET u.requested_department = u.department,
+            u.department = NULL,
+            u.dept_status = 'PENDING'
+        WHERE u.role = 'teacher'
+          AND u.dept_status = 'APPROVED'
+          AND u.department IS NOT NULL
+          AND u.department != ''
+          AND d.id IS NULL;
+      `);
+
+      // Ensure teachers with unapproved (PENDING/REJECTED) departments do not hold premature SUBMITTED state
+      await pool.query(`
+        DELETE ts FROM teacher_submissions ts
+        INNER JOIN users u ON u.citizen_id = ts.teacher_citizen_id
+        WHERE u.role = 'teacher' AND u.dept_status != 'APPROVED';
+      `);
+
+      // Remove any inconsistent SUBMITTED flag where candidate actually has 0 self-evaluation rows
+      await pool.query(`
+        DELETE ts FROM teacher_submissions ts
+        LEFT JOIN self_evaluations se
+          ON se.period_id = ts.period_id AND se.teacher_citizen_id = ts.teacher_citizen_id
+        WHERE se.id IS NULL;
+      `);
+
+      // 10. Seed initial assignment for candidate 2 (without overwriting live statuses)
+      await pool.query(`
+        INSERT IGNORE INTO assignments (id, period_id, teacher_citizen_id, judge_citizen_id, role_in_board, status)
+        VALUES (2, 1, '1100400000004', '1100300000003', 'ประธานกรรมการ', 'SUBMITTED');
       `);
 
       console.log('[DB] Database tables and initial seed initialized successfully.');

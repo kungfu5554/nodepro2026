@@ -11,8 +11,8 @@ router.use(authenticateToken);
 router.get('/', requireRole('admin', 'hr'), userController.getUsers);
 router.get('/:citizenId', requireRole('admin', 'hr'), userController.getUserByCitizenId);
 router.post('/', requireRole('admin', 'hr'), userController.createUser);
+router.put('/:citizenId/reset-password', requireRole('admin', 'hr'), userController.resetUserPassword);
 router.put('/:citizenId', requireRole('admin', 'hr'), userController.updateUser);
 router.delete('/:citizenId', requireRole('admin', 'hr'), userController.deleteUser);
 
 module.exports = router;
-
