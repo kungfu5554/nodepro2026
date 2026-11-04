@@ -10,6 +10,7 @@ router.post('/register', authController.register);
 
 // Protected endpoint
 router.get('/me', authenticateToken, authController.getProfile);
+router.put('/profile', authenticateToken, authController.updateProfile);
 
 module.exports = router;
 

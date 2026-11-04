@@ -41,6 +41,30 @@ async function getPeriod(req, res, next) {
   }
 }
 
+// Get all evaluation periods
+async function getAllPeriods(req, res, next) {
+  try {
+    const [rows] = await pool.query(`
+      SELECT 
+        id, 
+        name, 
+        DATE_FORMAT(start_date, '%Y-%m-%d') AS startDate, 
+        DATE_FORMAT(end_date, '%Y-%m-%d') AS endDate, 
+        is_open AS isOpen
+      FROM evaluation_periods
+      ORDER BY id ASC
+    `);
+
+    res.status(200).json({
+      status: 'success',
+      message: 'All evaluation periods retrieved.',
+      data: rows
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 // Update period details or toggle open status
 async function updatePeriod(req, res, next) {
   try {
@@ -358,6 +382,7 @@ async function getStatistics(req, res, next) {
 
 module.exports = {
   getPeriod,
+  getAllPeriods,
   updatePeriod,
   getMetrics,
   createMetric,

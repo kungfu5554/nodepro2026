@@ -78,6 +78,7 @@ CREATE TABLE IF NOT EXISTS self_evaluations (
   teacher_citizen_id VARCHAR(50) NOT NULL,
   metric_id INT NOT NULL,
   self_score VARCHAR(20) NOT NULL,
+  teacher_comment TEXT DEFAULT NULL,
   evidence_url TEXT DEFAULT NULL,
   evidence_original_name VARCHAR(255) DEFAULT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

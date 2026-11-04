@@ -122,6 +122,7 @@ async function initializeDatabase(maxRetries = 10, delayMs = 3000) {
           teacher_citizen_id VARCHAR(50) NOT NULL,
           metric_id INT NOT NULL,
           self_score VARCHAR(20) NOT NULL,
+          teacher_comment TEXT DEFAULT NULL,
           evidence_url TEXT DEFAULT NULL,
           evidence_original_name VARCHAR(255) DEFAULT NULL,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -135,6 +136,9 @@ async function initializeDatabase(maxRetries = 10, delayMs = 3000) {
 
       try {
         await pool.query('ALTER TABLE self_evaluations MODIFY teacher_citizen_id VARCHAR(50) NOT NULL;');
+      } catch (e) {}
+      try {
+        await pool.query('ALTER TABLE self_evaluations ADD COLUMN teacher_comment TEXT DEFAULT NULL;');
       } catch (e) {}
 
       await pool.query(`
@@ -167,11 +171,17 @@ async function initializeDatabase(maxRetries = 10, delayMs = 3000) {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
       `);
 
-      // 3. Seed initial evaluation period
+      // 3. Seed initial evaluation periods
       await pool.query(`
         INSERT INTO evaluation_periods (id, name, start_date, end_date, is_open)
-        VALUES (1, 'รอบประเมินประจำปี 2568', '2026-10-01', '2026-11-30', 1)
-        ON DUPLICATE KEY UPDATE name = VALUES(name);
+        VALUES 
+          (1, 'รอบการประเมินที่ 1 ประจำปีการศึกษา 2568', '2026-10-01', '2026-11-30', 1),
+          (2, 'รอบการประเมินที่ 2 ประจำปีการศึกษา 2567', '2026-04-01', '2026-05-31', 0)
+        ON DUPLICATE KEY UPDATE 
+          name = VALUES(name),
+          start_date = VALUES(start_date),
+          end_date = VALUES(end_date),
+          is_open = VALUES(is_open);
       `);
 
       // 4. Seed initial metrics

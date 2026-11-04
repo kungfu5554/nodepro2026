@@ -21,7 +21,7 @@ async function getMyEvaluationSheet(req, res, next) {
 
     // 3. Get existing self evaluations
     const [selfScores] = await pool.query(`
-      SELECT metric_id AS metricId, self_score AS selfScore, evidence_url AS evidenceUrl, evidence_original_name AS evidenceOriginalName
+      SELECT metric_id AS metricId, self_score AS selfScore, teacher_comment AS teacherComment, evidence_url AS evidenceUrl, evidence_original_name AS evidenceOriginalName
       FROM self_evaluations
       WHERE period_id = ? AND teacher_citizen_id = ?
     `, [periodId, teacherCitizenId]);
@@ -31,16 +31,36 @@ async function getMyEvaluationSheet(req, res, next) {
     const completedCount = selfScores.length;
     const progress = totalMetrics > 0 ? Math.round((completedCount / totalMetrics) * 100) : 0;
 
-    // 5. Get judge feedback if available
+    // 5. Get judge feedback and metric scores if available
     const [summaries] = await pool.query(`
-      SELECT es.total_score AS totalScore, es.overall_feedback AS overallFeedback, u_j.name AS judgeName, es.submitted_at AS submittedAt
+      SELECT 
+        a.id AS assignmentId,
+        es.total_score AS totalScore, 
+        es.overall_feedback AS overallFeedback, 
+        u_j.name AS judgeName, 
+        u_j.position AS judgePosition,
+        a.role_in_board AS roleInBoard,
+        a.status AS assignmentStatus,
+        es.judge_signature AS judgeSignature,
+        es.submitted_at AS submittedAt
       FROM assignments a
       JOIN users u_j ON a.judge_citizen_id = u_j.citizen_id
-      JOIN evaluation_summaries es ON a.id = es.assignment_id
+      LEFT JOIN evaluation_summaries es ON a.id = es.assignment_id
       WHERE a.period_id = ? AND a.teacher_citizen_id = ?
-      ORDER BY es.id DESC
+      ORDER BY a.id DESC
       LIMIT 1
     `, [periodId, teacherCitizenId]);
+
+    // Get individual judge scores per metric
+    let judgeMetricScores = [];
+    if (summaries.length > 0 && summaries[0].assignmentId) {
+      const [scores] = await pool.query(`
+        SELECT metric_id AS metricId, judge_score AS judgeScore
+        FROM judge_evaluations
+        WHERE assignment_id = ?
+      `, [summaries[0].assignmentId]);
+      judgeMetricScores = scores;
+    }
 
     res.status(200).json({
       status: 'success',
@@ -50,7 +70,8 @@ async function getMyEvaluationSheet(req, res, next) {
         metrics,
         selfScores,
         progress,
-        judgeFeedback: summaries.length > 0 ? summaries[0] : null
+        judgeFeedback: summaries.length > 0 ? summaries[0] : null,
+        judgeMetricScores
       }
     });
   } catch (error) {
@@ -84,17 +105,19 @@ async function saveSelfEvaluations(req, res, next) {
 
     // Insert or update each metric self evaluation
     for (const item of scores) {
-      const { metricId, selfScore, evidenceUrl, evidenceOriginalName } = item;
+      const { metricId, selfScore, teacherComment, comment, evidenceUrl, evidenceOriginalName } = item;
       if (!metricId || selfScore === undefined) continue;
+      const finalComment = teacherComment !== undefined ? teacherComment : (comment !== undefined ? comment : null);
 
       await pool.query(`
-        INSERT INTO self_evaluations (period_id, teacher_citizen_id, metric_id, self_score, evidence_url, evidence_original_name)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO self_evaluations (period_id, teacher_citizen_id, metric_id, self_score, teacher_comment, evidence_url, evidence_original_name)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
           self_score = VALUES(self_score),
+          teacher_comment = VALUES(teacher_comment),
           evidence_url = VALUES(evidence_url),
           evidence_original_name = VALUES(evidence_original_name)
-      `, [periodId, teacherCitizenId, metricId, String(selfScore), evidenceUrl || null, evidenceOriginalName || null]);
+      `, [periodId, teacherCitizenId, metricId, String(selfScore), finalComment, evidenceUrl || null, evidenceOriginalName || null]);
     }
 
     // Update assignment status to SUBMITTED if currently PENDING

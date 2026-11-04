@@ -8,6 +8,7 @@ router.use(authenticateToken);
 
 // Period management
 router.get('/period', hrController.getPeriod);
+router.get('/periods', hrController.getAllPeriods);
 router.put('/period/:id', requireRole('admin', 'hr'), hrController.updatePeriod);
 
 // Metrics management

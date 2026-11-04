@@ -216,8 +216,55 @@ async function getProfile(req, res, next) {
   }
 }
 
+// Update authenticated user's own profile
+async function updateProfile(req, res, next) {
+  try {
+    const userId = req.user.id;
+    const { prefix, name, department, position, email, phone, employeeId, signature, signatureUrl, password } = req.body;
+
+    const updates = [];
+    const params = [];
+
+    if (prefix !== undefined) { updates.push('prefix = ?'); params.push(prefix); }
+    if (name !== undefined && name.trim()) { updates.push('name = ?'); params.push(name.trim()); }
+    if (department !== undefined) { updates.push('department = ?'); params.push(department); }
+    if (position !== undefined) { updates.push('position = ?'); params.push(position); }
+    if (email !== undefined) { updates.push('email = ?'); params.push(email); }
+    if (phone !== undefined) { updates.push('phone = ?'); params.push(phone); }
+    if (employeeId !== undefined) { updates.push('employee_id = ?'); params.push(employeeId); }
+    if (signature || signatureUrl) {
+      updates.push('signature_url = ?');
+      params.push(signature || signatureUrl);
+    }
+    if (password && password.length >= 4) {
+      const hashedPassword = await bcrypt.hash(password, 10);
+      updates.push('password = ?');
+      params.push(hashedPassword);
+    }
+
+    if (updates.length > 0) {
+      params.push(userId);
+      await pool.query(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, params);
+    }
+
+    const [rows] = await pool.query(`
+      SELECT id, citizen_id AS citizenId, prefix, name, role, role_title AS roleTitle, department, position, email, phone, employee_id AS employeeId, signature_url AS signatureUrl
+      FROM users WHERE id = ?
+    `, [userId]);
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Profile updated successfully.',
+      data: rows[0]
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   login,
   register,
-  getProfile
+  getProfile,
+  updateProfile
 };

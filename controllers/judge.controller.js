@@ -75,15 +75,17 @@ async function getCandidateDetailsForGrading(req, res, next) {
       });
     }
 
-    // Fetch metrics along with candidate's self scores and previous judge scores
+    // Fetch metrics along with candidate's self scores, comments, and previous judge scores
     const [metricRows] = await pool.query(`
       SELECT 
         m.id AS metricId,
         m.title,
+        m.description,
         m.weight,
         m.eval_type AS evalType,
         m.evidence_type AS evidenceType,
         se.self_score AS selfScore,
+        se.teacher_comment AS teacherComment,
         se.evidence_url AS evidenceUrl,
         se.evidence_original_name AS evidenceOriginalName,
         je.judge_score AS existingJudgeScore
