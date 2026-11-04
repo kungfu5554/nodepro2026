@@ -227,6 +227,16 @@ async function initializeDatabase(maxRetries = 10, delayMs = 3000) {
           role_title: 'กรรมการผู้ประเมิน',
           department: 'คณะกรรมการประเมินภายนอก',
           position: 'ประธานกรรมการประเมิน'
+        },
+        {
+          citizen_id: '1100400000004',
+          password: 'pass1234',
+          prefix: 'นางสาว',
+          name: 'นางสาวกานดา วงศ์สุวรรณ',
+          role: 'teacher',
+          role_title: 'ผู้รับการประเมิน',
+          department: 'แผนกวิชาคอมพิวเตอร์ธุรกิจ',
+          position: 'ครูผู้ช่วย'
         }
       ];
 
@@ -250,11 +260,22 @@ async function initializeDatabase(maxRetries = 10, delayMs = 3000) {
         }
       }
 
-      // 6. Seed initial assignment
+      // 6. Seed initial assignments (Multiple evaluatees for presentation demo)
       await pool.query(`
         INSERT INTO assignments (id, period_id, teacher_citizen_id, judge_citizen_id, role_in_board, status)
-        VALUES (1, 1, '1100200000002', '1100300000003', 'ประธานกรรมการ', 'PENDING')
+        VALUES 
+          (1, 1, '1100200000002', '1100300000003', 'ประธานกรรมการ', 'PENDING'),
+          (2, 1, '1100400000004', '1100300000003', 'กรรมการและเลขานุการ', 'SUBMITTED')
         ON DUPLICATE KEY UPDATE role_in_board = VALUES(role_in_board);
+      `);
+
+      // Seed candidate 2 self-evaluations so candidate 2 is ready for grading
+      await pool.query(`
+        INSERT IGNORE INTO self_evaluations (period_id, teacher_citizen_id, metric_id, self_score, evidence_url)
+        VALUES
+          (1, '1100400000004', 1, '4', 'https://example.com/kanda-lesson-plan.pdf'),
+          (1, '1100400000004', 2, '3', 'https://example.com/training-cert.pdf'),
+          (1, '1100400000004', 3, 'มี', NULL);
       `);
 
       console.log('[DB] Database tables and initial seed initialized successfully.');

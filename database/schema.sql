@@ -134,8 +134,18 @@ VALUES
   ('1100000000000', '$2b$10$c815Ztzqy/8u9YgP6F6DvuMt1iztHQykIxuqLQbIbnw5shhanCH..', 'นาย', 'นายพัฒนพงษ์ เทคโนแอดมิน', 'admin', 'ผู้ดูแลระบบ (Admin)', 'ศูนย์เทคโนโลยีสารสนเทศ', 'ผู้ดูแลระบบ'),
   ('1100100000001', '$2b$10$WmKTBymFYoFBP8AnYdGbvuE7UN2CYcu.P./bC6ZhimwFqxqxPStIu', 'นางสาว', 'นางสาวดวงใจ รัตนพร', 'hr', 'ฝ่ายบุคลากร (HR)', 'งานบุคลากร', 'เจ้าหน้าที่งานบุคลากร'),
   ('1100200000002', '$2b$10$srzUkRFMAOF07d..EiyKLeGgv1SzQYiqoUzhnKGUfDAvOy7xq.o6e', 'นาย', 'นายสมชาย ใจดี', 'teacher', 'ผู้รับการประเมิน', 'แผนกวิชาเทคโนโลยีสารสนเทศ', 'ครู คศ.1'),
-  ('1100300000003', '$2b$10$jemNnhZdlIxhounDk5pddeNMllnIpVhrLUJqSag5CEug01Z8T9BFi', 'ดร.', 'ดร.สมศักดิ์ ทรงธรรม', 'judge', 'กรรมการผู้ประเมิน', 'คณะกรรมการประเมินภายนอก', 'ประธานกรรมการประเมิน');
+  ('1100300000003', '$2b$10$jemNnhZdlIxhounDk5pddeNMllnIpVhrLUJqSag5CEug01Z8T9BFi', 'ดร.', 'ดร.สมศักดิ์ ทรงธรรม', 'judge', 'กรรมการผู้ประเมิน', 'คณะกรรมการประเมินภายนอก', 'ประธานกรรมการประเมิน'),
+  ('1100400000004', '$2b$10$srzUkRFMAOF07d..EiyKLeGgv1SzQYiqoUzhnKGUfDAvOy7xq.o6e', 'นางสาว', 'นางสาวกานดา วงศ์สุวรรณ', 'teacher', 'ผู้รับการประเมิน', 'แผนกวิชาคอมพิวเตอร์ธุรกิจ', 'ครูผู้ช่วย');
 
--- Seed initial assignment
+-- Seed initial assignments
 INSERT IGNORE INTO assignments (id, period_id, teacher_citizen_id, judge_citizen_id, role_in_board, status)
-VALUES (1, 1, '1100200000002', '1100300000003', 'ประธานกรรมการ', 'PENDING');
+VALUES 
+  (1, 1, '1100200000002', '1100300000003', 'ประธานกรรมการ', 'PENDING'),
+  (2, 1, '1100400000004', '1100300000003', 'กรรมการและเลขานุการ', 'SUBMITTED');
+
+-- Seed candidate 2 self evaluation
+INSERT IGNORE INTO self_evaluations (period_id, teacher_citizen_id, metric_id, self_score, evidence_url)
+VALUES
+  (1, '1100400000004', 1, '4', 'https://example.com/kanda-lesson-plan.pdf'),
+  (1, '1100400000004', 2, '3', 'https://example.com/training-cert.pdf'),
+  (1, '1100400000004', 3, 'มี', NULL);
