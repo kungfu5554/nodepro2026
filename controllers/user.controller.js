@@ -13,12 +13,12 @@ function getRoleTitle(role) {
   }
 }
 
-// Get all users with optional filtering and search (Criteria 6.1: Query params)
+// Get all users with optional filtering and search
 async function getUsers(req, res, next) {
   try {
     const { role, search } = req.query;
     let query = `
-      SELECT id, citizen_id AS citizenId, prefix, name, role, role_title AS roleTitle, department, position, email, phone, employee_id AS employeeId, COALESCE(plain_password, '••••••••') AS password, signature_url AS signatureUrl, created_at AS createdAt
+      SELECT id, citizen_id AS citizenId, prefix, name, role, role_title AS roleTitle, department, position, email, phone, employee_id AS employeeId, signature_url AS signatureUrl, created_at AS createdAt
       FROM users
       WHERE 1=1
     `;
@@ -49,13 +49,13 @@ async function getUsers(req, res, next) {
   }
 }
 
-// Get single user by citizen ID (Criteria 6.1: Path parameter)
+// Get single user by citizen ID
 async function getUserByCitizenId(req, res, next) {
   try {
     const { citizenId } = req.params;
 
     const [rows] = await pool.query(`
-      SELECT id, citizen_id AS citizenId, prefix, name, role, role_title AS roleTitle, department, position, email, phone, employee_id AS employeeId, COALESCE(plain_password, '••••••••') AS password, signature_url AS signatureUrl
+      SELECT id, citizen_id AS citizenId, prefix, name, role, role_title AS roleTitle, department, position, email, phone, employee_id AS employeeId, signature_url AS signatureUrl
       FROM users WHERE citizen_id = ?
     `, [citizenId]);
 
@@ -77,7 +77,7 @@ async function getUserByCitizenId(req, res, next) {
   }
 }
 
-// Create new user (Criteria 6.2: POST Body)
+// Create new user
 async function createUser(req, res, next) {
   try {
     const { citizenId, username, password, prefix, fullname, name, role, department, position, email, phone, employeeId } = req.body;
@@ -101,6 +101,15 @@ async function createUser(req, res, next) {
       });
     }
 
+    const validRoles = ['admin', 'hr', 'teacher', 'judge'];
+    if (!validRoles.includes(role)) {
+      return res.status(400).json({
+        status: 'error',
+        message: `Invalid role "${role}". Allowed roles: ${validRoles.join(', ')}`,
+        data: null
+      });
+    }
+
     const [existing] = await pool.query('SELECT id FROM users WHERE citizen_id = ?', [finalCitizenId]);
     if (existing.length > 0) {
       return res.status(409).json({
@@ -116,12 +125,11 @@ async function createUser(req, res, next) {
     const displayName = finalName.startsWith(userPrefix) ? finalName : `${userPrefix} ${finalName}`;
 
     const [result] = await pool.query(`
-      INSERT INTO users (citizen_id, password, plain_password, prefix, name, role, role_title, department, position, email, phone, employee_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO users (citizen_id, password, prefix, name, role, role_title, department, position, email, phone, employee_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       finalCitizenId, 
       hashedPassword, 
-      password, 
       userPrefix, 
       displayName, 
       role, 
@@ -144,7 +152,6 @@ async function createUser(req, res, next) {
         roleTitle,
         department: department || 'แผนกวิชาเทคโนโลยีสารสนเทศ',
         position: position || 'ครู คศ.1',
-        password: password,
         email: email || null,
         phone: phone || null
       }
@@ -160,7 +167,7 @@ async function updateUser(req, res, next) {
     const { citizenId } = req.params;
     const { fullname, name, prefix, role, department, position, password, email, phone, employeeId, newCitizenId } = req.body;
 
-    const [existing] = await pool.query('SELECT id, password, plain_password FROM users WHERE citizen_id = ?', [citizenId]);
+    const [existing] = await pool.query('SELECT id, password FROM users WHERE citizen_id = ?', [citizenId]);
     if (existing.length === 0) {
       return res.status(404).json({
         status: 'error',
@@ -169,15 +176,25 @@ async function updateUser(req, res, next) {
       });
     }
 
-    const roleTitle = role ? getRoleTitle(role) : undefined;
-    let newPasswordHash = existing[0].password;
-    let newPlainPassword = existing[0].plain_password;
-    if (password && password.trim() !== '') {
-      newPasswordHash = await bcrypt.hash(password, 10);
-      newPlainPassword = password;
+    const targetCitizenId = (newCitizenId && newCitizenId.trim() !== '') ? newCitizenId.trim() : citizenId;
+
+    if (targetCitizenId !== citizenId) {
+      const [dup] = await pool.query('SELECT id FROM users WHERE citizen_id = ?', [targetCitizenId]);
+      if (dup.length > 0) {
+        return res.status(409).json({
+          status: 'error',
+          message: `Username / Citizen ID "${targetCitizenId}" is already taken.`,
+          data: null
+        });
+      }
     }
 
-    const targetCitizenId = (newCitizenId && newCitizenId.trim() !== '') ? newCitizenId.trim() : citizenId;
+    const roleTitle = role ? getRoleTitle(role) : undefined;
+    let newPasswordHash = existing[0].password;
+    if (password && password.trim() !== '') {
+      newPasswordHash = await bcrypt.hash(password, 10);
+    }
+
     const finalName = (fullname || name);
 
     await pool.query(`
@@ -192,10 +209,9 @@ async function updateUser(req, res, next) {
           email = COALESCE(?, email),
           phone = COALESCE(?, phone),
           employee_id = COALESCE(?, employee_id),
-          password = ?,
-          plain_password = ?
+          password = ?
       WHERE citizen_id = ?
-    `, [targetCitizenId, finalName || null, prefix || null, role || null, roleTitle || null, department || null, position || null, email || null, phone || null, employeeId || null, newPasswordHash, newPlainPassword, citizenId]);
+    `, [targetCitizenId, finalName || null, prefix || null, role || null, roleTitle || null, department || null, position || null, email || null, phone || null, employeeId || null, newPasswordHash, citizenId]);
 
     res.status(200).json({
       status: 'success',
@@ -238,4 +254,3 @@ module.exports = {
   updateUser,
   deleteUser
 };
-

@@ -101,7 +101,7 @@
       gap: 6px;
       background: #ffffff;
       padding: 8px 14px;
-      border-bottom: 1px solid var(--border);
+      border: 1px solid var(--border);
       border-radius: 14px;
       margin-bottom: 22px;
       flex-wrap: wrap;
@@ -109,7 +109,7 @@
     .sub-nav button {
       background: none;
       border: none;
-      padding: 9px 16px;
+      padding: 10px 18px;
       font-weight: 700;
       color: var(--text-muted);
       cursor: pointer;
@@ -125,8 +125,9 @@
     .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
     .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
     .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+    .grid-5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
     @media (max-width: 768px) {
-      .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+      .grid-2, .grid-3, .grid-4, .grid-5 { grid-template-columns: 1fr; }
     }
 
     label { display: block; font-size: 13px; font-weight: 700; color: #334155; margin-bottom: 6px; }
@@ -222,6 +223,7 @@
     .tag.blue { background: #eff6ff; color: #1d4ed8; }
     .tag.yellow { background: #fef3c7; color: #b45309; }
     .tag.red { background: #fee2e2; color: #dc2626; }
+    .tag.purple { background: #f3e8ff; color: #7e22ce; }
 
     /* Progress Bar */
     .progress-bar-bg { height: 10px; background: #e2e8f0; border-radius: 10px; overflow: hidden; margin-top: 8px; }
@@ -253,7 +255,7 @@
     /* Stat Cards */
     .stat-card { background: #f8fafc; border: 1px solid var(--border); border-radius: 14px; padding: 16px; }
     .stat-card.highlight { background: #eff6ff; border-color: #bfdbfe; }
-    .stat-card span { font-size: 12px; color: var(--text-muted); }
+    .stat-card span { font-size: 12px; color: var(--text-muted); font-weight: 600; }
     .stat-card strong { display: block; font-size: 20px; color: var(--text); margin-top: 4px; }
     .stat-card.highlight strong { color: #1d4ed8; }
 
@@ -268,6 +270,7 @@
       font-weight: 700;
       cursor: pointer;
       font-size: 13px;
+      transition: 0.2s;
     }
     .chip.active { background: #1d4ed8; color: #fff; }
 
@@ -316,7 +319,7 @@
       flex-wrap: wrap;
     }
     .pres-btn {
-      padding: 7px 12px;
+      padding: 8px 14px;
       border-radius: 8px;
       font-size: 12.5px;
       font-weight: 700;
@@ -382,11 +385,12 @@
     .modal-content {
       background: #ffffff;
       width: 100%;
-      max-width: 620px;
+      max-width: 640px;
       border-radius: 18px;
       overflow: hidden;
       max-height: 90vh;
       overflow-y: auto;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
     }
     .modal-header {
       padding: 16px 20px;
@@ -398,19 +402,48 @@
     }
     .modal-body { padding: 20px; }
     .modal-footer { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+
+    /* Print Stylesheet for Formal PDF Output */
+    @media print {
+      body { background: #ffffff !important; color: #000000 !important; font-size: 12pt; }
+      .navbar, .sub-nav, .pres-box, .btn-primary, .btn-sm, .btn-key, .btn-del, .btn-success, .btn-pdf, .btn-logout, .modal-footer, .chips, input, select, textarea, button, .alert {
+        display: none !important;
+      }
+      .modal-overlay {
+        position: static !important;
+        background: none !important;
+        padding: 0 !important;
+        display: block !important;
+      }
+      .modal-content {
+        max-width: 100% !important;
+        box-shadow: none !important;
+        border: none !important;
+        max-height: none !important;
+        overflow: visible !important;
+      }
+      .card {
+        box-shadow: none !important;
+        border: 1px solid #ccc !important;
+        page-break-inside: avoid;
+      }
+      .table { width: 100% !important; border: 1px solid #000; }
+      .table th, .table td { border: 1px solid #000 !important; padding: 6px 8px !important; }
+      .tag { border: 1px solid #000 !important; color: #000 !important; background: none !important; }
+    }
   </style>
 </head>
 <body>
   <div id="app">
     <!-- ============================================================== -->
-    <!-- 1. AUTHENTICATION (LOGIN & REALISTIC REGISTER) -->
+    <!-- 1. AUTHENTICATION (LOGIN & REGISTRATION) -->
     <!-- ============================================================== -->
     <div v-if="!currentUser" class="auth-wrap">
       
       <!-- 1.1 LOGIN MODE -->
       <div v-if="authMode === 'login'" class="auth-card login">
         <h1 class="auth-title">ระบบประเมินบุคลากร</h1>
-        <p class="auth-subtitle">Personnel Evaluation System</p>
+        <p class="auth-subtitle">Personnel Evaluation System (Vocational Standards)</p>
 
         <!-- Presentation Quick Access Bar -->
         <div class="pres-box">
@@ -419,13 +452,13 @@
           </div>
           <div class="pres-btns">
             <button type="button" class="pres-btn admin" @click="quickLogin('admin')" :disabled="isAuthLoading">
-              🏢 หน้าแอดมิน / HR
+              🏢 ผู้ดูแลระบบ & HR (Admin / HR)
             </button>
             <button type="button" class="pres-btn teacher" @click="quickLogin('teacher')" :disabled="isAuthLoading">
-              👨‍🏫 หน้าการประเมิน (ครู)
+              👨‍🏫 ผู้รับการประเมิน (ครู)
             </button>
             <button type="button" class="pres-btn judge" @click="quickLogin('judge')" :disabled="isAuthLoading">
-              ⚖️ หน้ากรรมการผู้ประเมิน
+              ⚖️ กรรมการผู้ประเมิน (Judge)
             </button>
           </div>
         </div>
@@ -435,7 +468,7 @@
 
         <form @submit.prevent="login">
           <div style="margin-bottom: 14px;">
-            <label>ชื่อผู้ใช้งาน หรือ เลขบัตรประชาชน (13 หลัก)</label>
+            <label>ชื่อผู้ใช้งาน หรือ เลขบัตรประชาชน</label>
             <input v-model="loginForm.citizenId" type="text" placeholder="กรอกชื่อผู้ใช้งาน หรือ เลขบัตร 13 หลัก" required />
           </div>
           <div style="margin-bottom: 18px;">
@@ -455,7 +488,7 @@
         </div>
       </div>
 
-      <!-- 1.2 REALISTIC REGISTER MODE -->
+      <!-- 1.2 REGISTER MODE -->
       <div v-else class="auth-card register">
         <h2 class="auth-title" style="text-align: left; font-size: 22px;">ลงทะเบียนผู้รับการประเมินใหม่</h2>
         <p class="auth-subtitle" style="text-align: left; margin-bottom: 16px;">กรอกข้อมูลประวัติการทำงาน สังกัด และแนบลายเซ็นดิจิทัลสำหรับใช้งานจริง</p>
@@ -467,13 +500,13 @@
           </div>
           <div class="pres-btns">
             <button type="button" class="pres-btn admin" @click="quickLogin('admin')" :disabled="isAuthLoading">
-              🏢 หน้าแอดมิน / HR
+              🏢 ผู้ดูแลระบบ & HR (Admin / HR)
             </button>
             <button type="button" class="pres-btn teacher" @click="quickLogin('teacher')" :disabled="isAuthLoading">
-              👨‍🏫 หน้าการประเมิน (ครู)
+              👨‍🏫 ผู้รับการประเมิน (ครู)
             </button>
             <button type="button" class="pres-btn judge" @click="quickLogin('judge')" :disabled="isAuthLoading">
-              ⚖️ หน้ากรรมการผู้ประเมิน
+              ⚖️ กรรมการผู้ประเมิน (Judge)
             </button>
           </div>
         </div>
@@ -498,28 +531,6 @@
 
           <div class="grid-2" style="margin-bottom: 12px;">
             <div>
-              <label>เลขประจำตัวประชาชน (13 หลัก) / Username *</label>
-              <input v-model="regForm.citizenId" maxlength="13" placeholder="ระบุเลข 13 หลัก หรือ ชื่อผู้ใช้" required />
-            </div>
-            <div>
-              <label>รหัสประจำตัวบุคลากร *</label>
-              <input v-model="regForm.employeeId" placeholder="เช่น T-68001" required />
-            </div>
-          </div>
-
-          <div class="grid-2" style="margin-bottom: 12px;">
-            <div>
-              <label>อีเมลติดต่อทางการ (Email) *</label>
-              <input v-model="regForm.email" type="email" placeholder="example@vec.mail.go.th" required />
-            </div>
-            <div>
-              <label>เบอร์โทรศัพท์ติดต่อ</label>
-              <input v-model="regForm.phone" placeholder="081-234-5678" />
-            </div>
-          </div>
-
-          <div class="grid-2" style="margin-bottom: 12px;">
-            <div>
               <label>แผนกวิชา / สังกัด *</label>
               <select v-model="regForm.department">
                 <option value="แผนกวิชาเทคโนโลยีสารสนเทศ">แผนกวิชาเทคโนโลยีสารสนเทศ</option>
@@ -527,7 +538,6 @@
                 <option value="แผนกวิชาช่างไฟฟ้ากำลัง">แผนกวิชาช่างไฟฟ้ากำลัง</option>
                 <option value="แผนกวิชาช่างยนต์">แผนกวิชาช่างยนต์</option>
                 <option value="แผนกวิชาการบัญชี">แผนกวิชาการบัญชี</option>
-                <option value="แผนกวิชาสามัญสัมพันธ์">แผนกวิชาสามัญสัมพันธ์</option>
               </select>
             </div>
             <div>
@@ -535,48 +545,44 @@
               <select v-model="regForm.position">
                 <option value="ครูผู้ช่วย">ครูผู้ช่วย</option>
                 <option value="ครู คศ.1">ครู คศ.1</option>
-                <option value="ครู คศ.2 (ชำนาญการ)">ครู คศ.2 (ชำนาญการ)</option>
-                <option value="ครู คศ.3 (ชำนาญการพิเศษ)">ครู คศ.3 (ชำนาญการพิเศษ)</option>
+                <option value="ครู คศ.2">ครู คศ.2</option>
+                <option value="หัวหน้าแผนกวิชา">หัวหน้าแผนกวิชา</option>
               </select>
             </div>
           </div>
 
-          <div class="form-divider">2. การกำหนดรหัสผ่านความปลอดภัย</div>
-          <div class="grid-2" style="margin-bottom: 12px;">
+          <div class="form-divider">2. ข้อมูลความปลอดภัยในการเข้าสู่ระบบ</div>
+          <div class="grid-3" style="margin-bottom: 12px;">
             <div>
-              <label>รหัสผ่านเข้าสู่ระบบ *</label>
-              <input v-model="regForm.password" type="password" placeholder="ตั้งรหัสผ่าน" required />
+              <label>Username / เลขบัตร *</label>
+              <input v-model="regForm.citizenId" placeholder="เช่น 1100400000004 หรือ teacher02" required />
+            </div>
+            <div>
+              <label>รหัสผ่าน *</label>
+              <input v-model="regForm.password" type="password" placeholder="อย่างน้อย 4 ตัวอักษร" required />
             </div>
             <div>
               <label>ยืนยันรหัสผ่าน *</label>
-              <input v-model="regForm.confirmPassword" type="password" placeholder="ยืนยันรหัสผ่านอีกครั้ง" required />
+              <input v-model="regForm.confirmPassword" type="password" placeholder="กรอกรหัสผ่านซ้ำ" required />
             </div>
           </div>
 
-          <div class="form-divider">3. ลายเซ็นดิจิทัล (Digital Signature)</div>
+          <div class="form-divider">3. ลายเซ็นอิเล็กทรอนิกส์ (Digital Signature)</div>
           <div class="sig-tabs">
-            <button type="button" :class="['sig-tab', regSigMode === 'upload' ? 'active' : '']" @click="regSigMode = 'upload'">
-              📁 อัปโหลดไฟล์ภาพลายเซ็น
-            </button>
-            <button type="button" :class="['sig-tab', regSigMode === 'draw' ? 'active' : '']" @click="regSigMode = 'draw'">
-              ✍️ วาดลายเซ็นสดบนหน้าจอ (Interactive Canvas)
-            </button>
+            <button type="button" :class="['sig-tab', regSigMode === 'upload' ? 'active' : '']" @click="regSigMode = 'upload'">📁 อัปโหลดภาพลายเซ็น</button>
+            <button type="button" :class="['sig-tab', regSigMode === 'draw' ? 'active' : '']" @click="regSigMode = 'draw'">✍️ วาดลายเซ็นบนหน้าจอ</button>
           </div>
 
-          <div v-if="regSigMode === 'upload'" class="sig-box">
+          <div v-if="regSigMode === 'upload'" style="margin-bottom: 14px;">
             <input type="file" accept="image/*" @change="onRegisterSigUpload" />
-            <div v-if="regForm.signature" style="margin-top: 10px;">
-              <img :src="regForm.signature" style="max-height: 50px; display: block; margin: 0 auto;" />
-              <button type="button" class="btn-del" style="margin-top: 6px;" @click="regForm.signature = ''">✕ ลบลายเซ็น</button>
-            </div>
+            <small style="color: var(--text-muted); display: block; margin-top: 4px;">รองรับไฟล์ PNG หรือ JPG พื้นหลังโปร่งใสหรือสีขาว</small>
+            <span v-if="regForm.signature" style="color:var(--success); font-weight:700; font-size:12.5px; display:block; margin-top:4px;">✅ บันทึกไฟล์ลายเซ็นแล้ว</span>
           </div>
 
-          <div v-else class="sig-box">
-            <small style="display:block; margin-bottom:8px; color:var(--text-muted);">วาดลายเซ็นของคุณด้วยเมาส์หรือระบบสัมผัส:</small>
-            <canvas id="indexCanvas" width="460" height="110" class="sig-canvas"
-              @mousedown="startDraw" @mousemove="drawing" @mouseup="stopDraw" @mouseleave="stopDraw"
-              @touchstart="touchStart" @touchmove="touchMove" @touchend="stopDraw">
-            </canvas>
+          <div v-else class="sig-box" style="margin-bottom: 14px;">
+            <canvas id="indexCanvas" class="sig-canvas" width="460" height="110"
+                    @mousedown="startDraw" @mousemove="drawing" @mouseup="stopDraw" @mouseleave="stopDraw"
+                    @touchstart="touchStart" @touchmove="touchMove" @touchend="stopDraw"></canvas>
             <div style="margin-top: 8px; display:flex; gap:10px; justify-content:center;">
               <button type="button" class="btn-sm" @click="clearIndexCanvas">🧹 ล้างลายเซ็น</button>
               <button type="button" class="btn-primary" style="padding: 5px 12px; font-size:12px;" @click="captureIndexCanvas">💾 บันทึกลายเซ็น</button>
@@ -621,7 +627,10 @@
         </div>
         <div class="user-meta">
           <span>{{ currentUser.name }}</span>
-          <span class="user-role-badge">{{ currentUser.roleTitle }}</span>
+          <span class="user-role-badge">
+            <span v-if="currentUser.role === 'admin' || currentUser.role === 'hr'">🛡️ ผู้ดูแลระบบและฝ่ายบุคลากร (Admin & HR)</span>
+            <span v-else>{{ currentUser.roleTitle }}</span>
+          </span>
           <button @click="logout" class="btn-logout">ออกจากระบบ</button>
         </div>
       </header>
@@ -630,9 +639,9 @@
       <!-- UNIFIED ADMIN & HR DASHBOARD (ผู้ดูแลระบบ และ ฝ่ายบุคลากร รวมกัน) -->
       <!-- ============================================================== -->
       <div v-if="currentUser.role === 'admin' || currentUser.role === 'hr'" class="container">
-        <!-- Sub-navigation tabs (5 tabs matching HrDashboard.vue) -->
+        <!-- Sub-navigation tabs (5 tabs) -->
         <div class="sub-nav">
-          <button :class="{ active: adminTab === 'users' }" @click="adminTab = 'users'">👥 1. จัดการผู้ใช้ & สิทธิ์ระบบ</button>
+          <button :class="{ active: adminTab === 'users' }" @click="adminTab = 'users'">👥 1. จัดการบุคลากร (ผู้ใช้ & สิทธิ์)</button>
           <button :class="{ active: adminTab === 'period' }" @click="adminTab = 'period'">⏰ 2. รอบประเมิน & เปิด/ปิดระบบ</button>
           <button :class="{ active: adminTab === 'metrics' }" @click="adminTab = 'metrics'">🎯 3. ตัวชี้วัด & เกณฑ์คะแนน</button>
           <button :class="{ active: adminTab === 'assign' }" @click="adminTab = 'assign'">🤝 4. มอบหมายคณะกรรมการ</button>
@@ -644,7 +653,7 @@
           <div class="page-header">
             <div>
               <h2>👥 จัดการผู้ใช้งานและสิทธิ์ในระบบ</h2>
-              <p>เพิ่ม ลบ แก้ไข ข้อมูลผู้รับการประเมิน กรรมการผู้ประเมิน และฝ่ายบุคลากร (บันทึกฐานข้อมูลจริง)</p>
+              <p>เพิ่ม ลบ แก้ไข ข้อมูลผู้รับการประเมิน กรรมการผู้ประเมิน และผู้ดูแลระบบ/HR (ข้อมูลปลอดภัย ไม่เปิดเผยรหัสผ่าน)</p>
             </div>
             <button class="btn-primary" @click="openUserModal('add')">➕ เพิ่มผู้ใช้งานใหม่</button>
           </div>
@@ -652,10 +661,10 @@
           <div class="card">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
               <div style="display: flex; gap: 6px;">
-                <button v-for="r in ['ALL', 'teacher', 'judge', 'hr']" :key="r" 
+                <button v-for="r in ['ALL', 'teacher', 'judge', 'hr', 'admin']" :key="r" 
                         :class="['btn-sm', userFilterRole === r ? 'active' : '']"
                         @click="userFilterRole = r">
-                  {{ r === 'ALL' ? 'ทั้งหมด' : (r === 'teacher' ? 'ผู้รับการประเมิน' : (r === 'judge' ? 'กรรมการ' : 'HR')) }}
+                  {{ r === 'ALL' ? 'ทั้งหมด' : (r === 'teacher' ? 'ผู้รับการประเมิน' : (r === 'judge' ? 'กรรมการ' : (r === 'hr' ? 'ฝ่ายบุคลากร' : 'ผู้ดูแลระบบ'))) }}
                 </button>
               </div>
               <input v-model="userSearchQuery" placeholder="🔍 ค้นหาชื่อ หรือ Username..." style="width: 260px;" />
@@ -667,9 +676,8 @@
                   <th width="50">ลำดับ</th>
                   <th width="160">Username / เลขบัตร</th>
                   <th>ชื่อ - นามสกุล</th>
-                  <th width="140">บทบาทสิทธิ์</th>
+                  <th width="160">บทบาทสิทธิ์</th>
                   <th>สังกัด / ตำแหน่ง</th>
-                  <th width="110">รหัสผ่าน</th>
                   <th width="210" style="text-align: center;">จัดการข้อมูล</th>
                 </tr>
               </thead>
@@ -678,9 +686,12 @@
                   <td>{{ idx + 1 }}</td>
                   <td><strong>{{ u.citizenId }}</strong></td>
                   <td>{{ u.name }}</td>
-                  <td><span :class="['tag', u.role === 'admin' ? 'red' : (u.role === 'hr' ? 'blue' : (u.role === 'teacher' ? 'green' : 'yellow'))]">{{ u.roleTitle }}</span></td>
+                  <td>
+                    <span :class="['tag', u.role === 'admin' ? 'red' : (u.role === 'hr' ? 'blue' : (u.role === 'teacher' ? 'green' : 'yellow'))]">
+                      {{ u.role === 'admin' ? 'ผู้ดูแลระบบ' : (u.role === 'hr' ? 'ฝ่ายบุคลากร' : u.roleTitle) }}
+                    </span>
+                  </td>
                   <td>{{ u.department || '-' }} ({{ u.position || '-' }})</td>
-                  <td><code>{{ u.password || '••••••••' }}</code></td>
                   <td style="text-align: center;">
                     <button class="btn-sm" @click="openUserModal('edit', u)" title="แก้ไขข้อมูล">✏️ แก้ไข</button>
                     <button class="btn-key" @click="openAccountModal(u)" title="เปลี่ยน Username & รหัสผ่าน">🔑 รหัสผ่าน</button>
@@ -688,7 +699,7 @@
                   </td>
                 </tr>
                 <tr v-if="filteredUsers.length === 0">
-                  <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 24px;">ไม่พบข้อมูลผู้ใช้งาน</td>
+                  <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 24px;">ไม่พบข้อมูลผู้ใช้งาน</td>
                 </tr>
               </tbody>
             </table>
@@ -728,9 +739,18 @@
           <div class="page-header" style="margin-bottom: 16px;">
             <div>
               <h2>🎯 จัดการหัวข้อและตัวชี้วัดการประเมิน</h2>
-              <p>กำหนดรายละเอียดตัวชี้วัด น้ำหนักคะแนน รูปแบบคะแนน (สเกล 1-4 หรือ ตัวเลือกมี/ไม่มี) และประเภทหลักฐาน</p>
+              <p>กำหนดรายละเอียดตัวชี้วัด น้ำหนักคะแนน รูปแบบคะแนน และประเภทหลักฐาน</p>
+            </div>
+            <!-- Weight Gauge -->
+            <div>
+              <span :class="['tag', totalMetricWeight === 100 ? 'green' : 'yellow']" style="font-size: 14px; padding: 6px 14px;">
+                น้ำหนักรวมปัจจุบัน: <strong>{{ totalMetricWeight }}% / 100%</strong>
+                <span v-if="totalMetricWeight === 100"> ✅ ครบถ้วน</span>
+                <span v-else> ⚠️ ไม่ครบ 100%</span>
+              </span>
             </div>
           </div>
+
           <div style="background: #f8fafc; padding: 18px; border-radius: 14px; margin-top: 14px;">
             <div class="grid-3">
               <div><label>ชื่อตัวชี้วัด *</label><input v-model="newMetric.title" placeholder="เช่น การพัฒนาแผนการจัดการเรียนรู้" /></div>
@@ -764,7 +784,7 @@
                 <th width="100">น้ำหนัก</th>
                 <th width="180">รูปแบบการประเมิน</th>
                 <th width="140">หลักฐานที่กำหนด</th>
-                <th width="80" style="text-align: center;">จัดการ</th>
+                <th width="140" style="text-align: center;">จัดการ</th>
               </tr>
             </thead>
             <tbody>
@@ -774,7 +794,10 @@
                 <td><strong>{{ m.weight }}%</strong></td>
                 <td><span class="tag blue">{{ m.evalType === 'SCALE' ? 'สเกลคะแนน 1 - 4' : 'มี / ไม่มี' }}</span></td>
                 <td>📁 {{ m.evidenceType }}</td>
-                <td style="text-align: center;"><button @click="deleteMetric(m, i)" class="btn-del">ลบ</button></td>
+                <td style="text-align: center;">
+                  <button @click="openEditMetricModal(m)" class="btn-sm" style="margin-right: 4px;">✏️ แก้ไข</button>
+                  <button @click="deleteMetric(m, i)" class="btn-del">ลบ</button>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -785,7 +808,7 @@
           <div class="page-header" style="margin-bottom: 16px;">
             <div>
               <h2>🤝 มอบหมายคณะกรรมการผู้ประเมิน</h2>
-              <p>จับคู่กรรมการผู้ประเมินกับผู้รับการประเมิน พร้อมกำหนดบทบาทหน้าที่ในคณะกรรมการ</p>
+              <p>จับคู่กรรมการผู้ประเมินกับผู้รับการประเมิน พร้อมกำหนดบทบาทหน้าที่ และสามารถยกเลิกการจับคู่ได้</p>
             </div>
           </div>
           <div class="grid-3" style="margin-top: 14px;">
@@ -812,14 +835,34 @@
           </div>
           <button @click="saveAssign" class="btn-primary" style="margin-top: 14px;">💾 บันทึกการจับคู่กรรมการ</button>
 
-          <table class="table">
-            <thead><tr><th>ผู้รับการประเมิน</th><th>กรรมการผู้ตรวจ</th><th>บทบาทหน้าที่</th><th>สถานะการประเมิน</th></tr></thead>
+          <table class="table" style="margin-top: 20px;">
+            <thead>
+              <tr>
+                <th>ผู้รับการประเมิน</th>
+                <th>กรรมการผู้ตรวจ</th>
+                <th>บทบาทหน้าที่</th>
+                <th>สถานะการประเมิน</th>
+                <th>คะแนนที่ได้</th>
+                <th width="120" style="text-align: center;">การจัดการ</th>
+              </tr>
+            </thead>
             <tbody>
               <tr v-for="a in assignments" :key="a.id">
-                <td><strong>{{ a.teacherName }}</strong></td>
+                <td><strong>{{ a.teacherName }}</strong><br/><small style="color:var(--text-muted)">{{ a.teacherDepartment }}</small></td>
                 <td>{{ a.judgeName }}</td>
                 <td><span class="tag blue">{{ a.roleInBoard }}</span></td>
-                <td><span :class="['tag', a.status === 'EVALUATED' ? 'green' : 'yellow']">{{ a.status === 'EVALUATED' ? '🟢 ตรวจเสร็จสิ้น' : '🟡 รอการตรวจ' }}</span></td>
+                <td>
+                  <span :class="['tag', a.status === 'EVALUATED' ? 'green' : (a.status === 'SUBMITTED' ? 'blue' : 'yellow')]">
+                    {{ a.status === 'EVALUATED' ? '🟢 ตรวจเสร็จสิ้น' : (a.status === 'SUBMITTED' ? '🔵 ส่งแล้ว รอตรวจ' : '🟡 รอส่งงาน') }}
+                  </span>
+                </td>
+                <td><strong>{{ a.totalScore ? `${a.totalScore} / 4.00` : '- รอตรวจ -' }}</strong></td>
+                <td style="text-align: center;">
+                  <button @click="removeAssignment(a)" class="btn-del" title="ยกเลิกการจับคู่">🗑️ ยกเลิก</button>
+                </td>
+              </tr>
+              <tr v-if="assignments.length === 0">
+                <td colspan="6" style="text-align:center; color:var(--text-muted); padding:20px;">ยังไม่มีการจับคู่กรรมการ</td>
               </tr>
             </tbody>
           </table>
@@ -830,26 +873,31 @@
           <div class="page-header" style="margin-bottom: 16px;">
             <div>
               <h2>📊 ติดตามสถานะและสรุปผลภาพรวม</h2>
-              <p>ติดตามความคืบหน้าการส่งงานของบุคลากร ผลการประเมินของกรรมการ และสรุปรายงาน PDF</p>
+              <p>ติดตามความคืบหน้าการส่งงานจริงของบุคลากร ผลการประเมินของกรรมการ และออกรายงานผลการประเมิน PDF</p>
             </div>
           </div>
 
-          <!-- Statistics Cards -->
-          <div class="grid-4" style="margin-top: 14px;">
-            <div class="stat-card"><span>ผู้รับการประเมินทั้งหมด</span><strong>{{ hrStats.totalTeachers }} คน</strong></div>
-            <div class="stat-card"><span>กรรมการผู้ประเมิน</span><strong>{{ hrStats.totalJudges }} คน</strong></div>
-            <div class="stat-card"><span>ตรวจประเมินเสร็จสิ้น</span><strong>{{ hrStats.completedAssignments }} / {{ hrStats.totalAssignments }} รายการ</strong></div>
-            <div class="stat-card highlight"><span>คะแนนเฉลี่ยภาพรวม</span><strong>{{ hrStats.averageScore }} / 4.00</strong></div>
+          <!-- Real Statistics Cards -->
+          <div class="grid-5" style="margin-top: 14px;">
+            <div class="stat-card"><span>ผู้รับการประเมินทั้งหมด</span><strong>{{ hrStats.totalTeachers || teachers.length }} คน</strong></div>
+            <div class="stat-card"><span>รอส่งผลงาน</span><strong style="color:var(--warning)">{{ hrStats.pendingAssignments || 0 }} รายการ</strong></div>
+            <div class="stat-card"><span>ส่งผลงานแล้ว รอตรวจ</span><strong style="color:var(--primary)">{{ hrStats.submittedAssignments || 0 }} รายการ</strong></div>
+            <div class="stat-card"><span>ตรวจประเมินเสร็จสิ้น</span><strong style="color:var(--success)">{{ hrStats.completedAssignments || 0 }} รายการ</strong></div>
+            <div class="stat-card highlight"><span>คะแนนเฉลี่ยภาพรวม</span><strong>{{ hrStats.averageScore || '0.00' }} / 4.00</strong></div>
           </div>
 
           <table class="table" style="margin-top: 20px;">
             <thead><tr><th>ชื่อผู้รับการประเมิน</th><th>สถานะการส่งงาน</th><th>กรรมการผู้ตรวจ</th><th>คะแนนเฉลี่ย</th><th>รายงานสรุปผล</th></tr></thead>
             <tbody>
               <tr v-for="a in assignments" :key="a.id">
-                <td><strong>{{ a.teacherName }}</strong></td>
-                <td><span :class="['tag', a.status === 'EVALUATED' ? 'green' : 'blue']">{{ a.status === 'EVALUATED' ? 'ตรวจเสร็จสิ้น' : 'ส่งครบ 100%' }}</span></td>
+                <td><strong>{{ a.teacherName }}</strong><br/><small style="color:var(--text-muted)">{{ a.teacherDepartment }}</small></td>
+                <td>
+                  <span :class="['tag', a.status === 'EVALUATED' ? 'green' : (a.status === 'SUBMITTED' ? 'blue' : 'yellow')]">
+                    {{ a.status === 'EVALUATED' ? '🟢 ตรวจเสร็จสิ้น' : (a.status === 'SUBMITTED' ? '🔵 ส่งแล้ว รอตรวจ' : '🟡 รอส่งงาน') }}
+                  </span>
+                </td>
                 <td>{{ a.judgeName }} ({{ a.roleInBoard }})</td>
-                <td><strong>{{ a.totalScore ? `${a.totalScore} / 4.00` : '3.85 / 4.00' }}</strong></td>
+                <td><strong>{{ a.totalScore ? `${a.totalScore} / 4.00` : '- รอผลการตรวจ -' }}</strong></td>
                 <td><button @click="openReportModal(a)" class="btn-sm">📄 ดูสรุปผล PDF</button></td>
               </tr>
             </tbody>
@@ -887,7 +935,7 @@
         <!-- Committee Feedback Alert -->
         <div class="card" style="background: #fefce8; border-color: #fef08a;">
           <strong style="color: #854d0e;">💬 ความคิดเห็นและข้อเสนอแนะจากคณะกรรมการผู้ประเมิน:</strong>
-          <p style="margin-top: 6px; color: #713f12;">{{ teacherJudgeFeedback }}</p>
+          <p style="margin-top: 6px; color: #713f12;">{{ teacherJudgeFeedback || 'ยังไม่มีผลการประเมินหรือข้อเสนอแนะจากคณะกรรมการ' }}</p>
         </div>
 
         <!-- Self Evaluation Form -->
@@ -916,7 +964,7 @@
               <div v-else>
                 <input type="file" @change="uploadTeacherFile($event, m.id)" />
                 <small v-if="teacherEvidence[m.id]" style="color: var(--success); display: block; margin-top: 4px; font-weight: 600;">
-                  ✅ ไฟล์ที่แนบ: {{ teacherEvidence[m.id] }}
+                  ✅ ไฟล์ที่แนบ: <a :href="teacherEvidence[m.id]" target="_blank">{{ teacherEvidence[m.id] }}</a>
                 </small>
               </div>
             </div>
@@ -939,9 +987,11 @@
           <div class="chips">
             <button v-for="(c, idx) in judgeCandidates" :key="c.assignmentId || idx" 
                     :class="['chip', judgeSelectedIdx === idx ? 'active' : '']"
-                    @click="judgeSelectedIdx = idx">
+                    @click="selectJudgeCandidate(idx)">
               {{ c.teacherName }} ({{ c.department }})
               <span v-if="c.status === 'EVALUATED'" class="tag green" style="margin-left: 6px;">ตรวจแล้ว</span>
+              <span v-else-if="c.status === 'SUBMITTED'" class="tag blue" style="margin-left: 6px;">ส่งแล้ว</span>
+              <span v-else class="tag yellow" style="margin-left: 6px;">รอส่ง</span>
             </button>
           </div>
         </div>
@@ -961,25 +1011,36 @@
                 <th>ตัวชี้วัด</th>
                 <th>หลักฐานประกอบ</th>
                 <th>คะแนนประเมินตนเอง</th>
-                <th>คะแนนที่กรรมการให้ (ระดับ 1 - 4)</th>
+                <th>คะแนนที่กรรมการให้</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="m in metrics" :key="m.id">
+              <tr v-for="m in candidateGradingMetrics" :key="m.metricId">
                 <td><strong>{{ m.title }}</strong><br/><small style="color:var(--text-muted);">น้ำหนัก {{ m.weight }}%</small></td>
                 <td>
-                  <a v-if="m.evidenceUrl" :href="m.evidenceUrl" target="_blank" style="color: var(--primary); font-weight: 600;">
+                  <a v-if="m.evidenceUrl" :href="m.evidenceUrl" target="_blank" style="color: var(--primary); font-weight: 700;">
                     📎 ดูไฟล์หลักฐาน ({{ m.evidenceType }})
                   </a>
-                  <span v-else style="color: var(--text-muted);">เอกสารแนบในระบบ</span>
+                  <span v-else style="color: var(--text-muted);">ไม่มีหลักฐานแนบ</span>
                 </td>
-                <td><span class="tag blue">ระดับ 3</span></td>
                 <td>
-                  <select v-model="judgeScores[m.id]" style="width: 220px;">
+                  <span v-if="m.selfScore" class="tag blue">
+                    {{ m.evalType === 'BOOLEAN' ? (m.selfScore === 'มี' ? 'มีการปฏิบัติ' : 'ไม่มี') : `ระดับ ${m.selfScore}` }}
+                  </span>
+                  <span v-else class="tag yellow">ยังไม่ประเมินตนเอง</span>
+                </td>
+                <td>
+                  <!-- Scale evaluation select -->
+                  <select v-if="m.evalType === 'SCALE'" v-model="judgeScores[m.metricId]" style="width: 220px;">
                     <option value="4">ระดับ 4 - สูงกว่าคาดหวัง</option>
                     <option value="3">ระดับ 3 - ตามคาดหวัง</option>
                     <option value="2">ระดับ 2 - ต่ำกว่าคาดหวัง</option>
                     <option value="1">ระดับ 1 - ต่ำกว่าคาดหวังมาก</option>
+                  </select>
+                  <!-- Boolean evaluation select -->
+                  <select v-else v-model="judgeScores[m.metricId]" style="width: 220px;">
+                    <option value="4">มีการปฏิบัติ (4 คะแนน)</option>
+                    <option value="0">ไม่มีการปฏิบัติ (0 คะแนน)</option>
                   </select>
                 </td>
               </tr>
@@ -1017,9 +1078,10 @@
           <div style="margin-bottom: 12px;">
             <label>เลือกบทบาทหน้าที่ (Role) *</label>
             <select v-model="userModalForm.role" required>
-              <option value="teacher">ผู้รับการประเมิน (บุคลากร)</option>
-              <option value="judge">กรรมการผู้ประเมิน</option>
+              <option value="teacher">ผู้รับการประเมิน (ครู/บุคลากร)</option>
+              <option value="judge">กรรมการผู้ประเมิน (Judge)</option>
               <option value="hr">ฝ่ายบุคลากร (HR)</option>
+              <option value="admin">ผู้ดูแลระบบ (Admin)</option>
             </select>
           </div>
           <div class="grid-2" style="margin-bottom: 12px;">
@@ -1052,12 +1114,56 @@
                 <option value="หัวหน้าแผนกวิชา">หัวหน้าแผนกวิชา</option>
                 <option value="กรรมการผู้ทรงคุณวุฒิ">กรรมการผู้ทรงคุณวุฒิ</option>
                 <option value="เจ้าหน้าที่งานบุคลากร">เจ้าหน้าที่งานบุคลากร</option>
+                <option value="ผู้ดูแลระบบ">ผู้ดูแลระบบ</option>
               </select>
             </div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn-sm" @click="showUserModal = false">ยกเลิก</button>
             <button type="submit" class="btn-primary">{{ userModalMode === 'add' ? 'บันทึกผู้ใช้ลงฐานข้อมูล' : 'อัปเดตข้อมูล' }}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ============================================================== -->
+    <!-- EDIT METRIC MODAL -->
+    <!-- ============================================================== -->
+    <div v-if="showEditMetricModal" class="modal-overlay">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>✏️ แก้ไขตัวชี้วัดการประเมิน</h3>
+          <button @click="showEditMetricModal = false" style="background:none; border:none; cursor:pointer; font-size:16px;">✕</button>
+        </div>
+        <form @submit.prevent="saveEditMetric" class="modal-body">
+          <div style="margin-bottom: 12px;">
+            <label>ชื่อตัวชี้วัด *</label>
+            <input v-model="editMetricForm.title" required />
+          </div>
+          <div class="grid-2" style="margin-bottom: 12px;">
+            <div>
+              <label>น้ำหนักคะแนน (%) *</label>
+              <input v-model.number="editMetricForm.weight" type="number" required />
+            </div>
+            <div>
+              <label>ประเภทหลักฐานประกอบ *</label>
+              <select v-model="editMetricForm.evidenceType">
+                <option value="PDF">ไฟล์เอกสาร PDF</option>
+                <option value="IMAGE">ไฟล์รูปภาพ (PNG / JPG)</option>
+                <option value="URL">ลิงก์ URL ผลงาน</option>
+              </select>
+            </div>
+          </div>
+          <div style="margin-bottom: 12px;">
+            <label>รูปแบบการประเมิน:</label>
+            <select v-model="editMetricForm.evalType">
+              <option value="SCALE">สเกลคะแนน 1 - 4</option>
+              <option value="BOOLEAN">ตัวเลือก มี / ไม่มี</option>
+            </select>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn-sm" @click="showEditMetricModal = false">ยกเลิก</button>
+            <button type="submit" class="btn-primary">💾 บันทึกการเปลี่ยนแปลง</button>
           </div>
         </form>
       </div>
@@ -1082,11 +1188,11 @@
           </div>
           <div style="margin-bottom: 12px;">
             <label>รหัสผ่านใหม่ (New Password) *</label>
-            <input v-model="accountForm.newPassword" required />
+            <input v-model="accountForm.newPassword" type="password" required />
           </div>
           <div style="margin-bottom: 16px;">
             <label>ยืนยันรหัสผ่านใหม่อีกครั้ง *</label>
-            <input v-model="accountForm.confirmPassword" required />
+            <input v-model="accountForm.confirmPassword" type="password" required />
           </div>
           <div class="modal-footer">
             <button type="button" class="btn-sm" @click="showAccountModal = false">ยกเลิก</button>
@@ -1108,23 +1214,51 @@
         <div class="modal-body" id="modalPrintArea">
           <div style="text-align: center; border-bottom: 2px solid #e2e8f0; padding-bottom: 14px; margin-bottom: 16px;">
             <h2 style="font-size: 20px;">รายงานผลการประเมินการปฏิบัติงาน</h2>
-            <p style="font-size: 13.5px; color: var(--text-muted);">รอบการประเมินประจำปีงบประมาณ | ระบบประเมินบุคลากร</p>
+            <p style="font-size: 13.5px; color: var(--text-muted);">รอบการประเมิน: {{ period.name }} | ระบบประเมินบุคลากรมาตรฐาน ปวช.</p>
           </div>
-          <p><strong>ผู้รับการประเมิน:</strong> {{ selectedReportItem?.teacherName }}</p>
-          <p><strong>คณะกรรมการผู้ตรวจ:</strong> {{ selectedReportItem?.judgeName }} ({{ selectedReportItem?.roleInBoard }})</p>
-          <p><strong>สถานะผลการประเมิน:</strong> <span class="tag green">ตรวจเสร็จสิ้นสมบูรณ์</span></p>
-          <p><strong>คะแนนเฉลี่ยรวม:</strong> <strong style="color: var(--primary); font-size: 18px;">{{ selectedReportItem?.totalScore || '3.85' }} / 4.00 (ระดับดีเด่น)</strong></p>
+          <div class="grid-2" style="margin-bottom: 14px;">
+            <div>
+              <p><strong>ผู้รับการประเมิน:</strong> {{ selectedReportItem?.teacherName }}</p>
+              <p><strong>แผนกวิชา/สังกัด:</strong> {{ selectedReportItem?.teacherDepartment || 'แผนกวิชาเทคโนโลยีสารสนเทศ' }}</p>
+            </div>
+            <div>
+              <p><strong>คณะกรรมการผู้ตรวจ:</strong> {{ selectedReportItem?.judgeName }} ({{ selectedReportItem?.roleInBoard }})</p>
+              <p><strong>สถานะผลการประเมิน:</strong> 
+                <span :class="['tag', selectedReportItem?.status === 'EVALUATED' ? 'green' : 'yellow']">
+                  {{ selectedReportItem?.status === 'EVALUATED' ? '🟢 ตรวจเสร็จสิ้นสมบูรณ์' : '🟡 รอผลการตรวจประเมิน' }}
+                </span>
+              </p>
+            </div>
+          </div>
+
+          <div style="background: #f8fafc; padding: 12px 16px; border-radius: 10px; margin-bottom: 14px;">
+            <p><strong>คะแนนเฉลี่ยรวม:</strong> 
+              <strong style="color: var(--primary); font-size: 18px; margin-left: 8px;">
+                {{ selectedReportItem?.totalScore ? `${selectedReportItem.totalScore} / 4.00` : '- รอผลตรวจ -' }}
+              </strong>
+            </p>
+            <p v-if="selectedReportItem?.overallFeedback" style="font-size: 13px; color: #475569; margin-top: 4px;">
+              <strong>ข้อเสนอแนะ:</strong> {{ selectedReportItem.overallFeedback }}
+            </p>
+          </div>
           
           <table class="table" style="margin-top: 14px;">
-            <thead><tr><th>ตัวชี้วัด</th><th>น้ำหนัก</th><th>ผลการประเมิน</th></tr></thead>
+            <thead>
+              <tr>
+                <th>ตัวชี้วัด</th>
+                <th>น้ำหนัก</th>
+                <th>รูปแบบการประเมิน</th>
+              </tr>
+            </thead>
             <tbody>
               <tr v-for="m in metrics" :key="m.id">
                 <td>{{ m.title }}</td>
                 <td>{{ m.weight }}%</td>
-                <td><span class="tag green">ระดับ 4 (สูงกว่าคาดหวัง)</span></td>
+                <td><span class="tag blue">{{ m.evalType === 'SCALE' ? 'สเกล 1 - 4' : 'มี / ไม่มี' }}</span></td>
               </tr>
             </tbody>
           </table>
+
           <div class="modal-footer" style="margin-top: 24px;">
             <button class="btn-sm" @click="showReportModal = false">ปิดหน้าต่าง</button>
             <button class="btn-pdf" @click="printModalReport">🖨️ พิมพ์เอกสาร PDF</button>
@@ -1140,7 +1274,6 @@
 
     createApp({
       setup() {
-        // Immediate session restore from localStorage so page refresh NEVER bounces back to login
         const savedUserStr = localStorage.getItem('auth_user');
         let initialUser = null;
         if (savedUserStr) {
@@ -1180,6 +1313,10 @@
         const userModalMode = ref('add');
         const userModalForm = ref({ prefix: 'นาย', fullname: '', citizenId: '', password: '', role: 'teacher', department: 'แผนกวิชาเทคโนโลยีสารสนเทศ', position: 'ครู คศ.1' });
 
+        // Metric edit modal
+        const showEditMetricModal = ref(false);
+        const editMetricForm = ref({ id: null, title: '', weight: 25, evalType: 'SCALE', evidenceType: 'PDF' });
+
         // Change password / username modal
         const showAccountModal = ref(false);
         const accountTargetUser = ref({});
@@ -1191,25 +1328,22 @@
           { id: 2, title: 'ด้านการพัฒนาตนเองและวิชาชีพ', weight: 30, evalType: 'SCALE', evidenceType: 'URL' },
           { id: 3, title: 'การมีส่วนร่วมในกิจกรรมสถานศึกษา', weight: 30, evalType: 'BOOLEAN', evidenceType: 'IMAGE' }
         ]);
-        const assignments = ref([
-          { id: 1, teacherName: 'นายสมชาย ใจดี', judgeName: 'ดร.สมศักดิ์ ทรงธรรม', roleInBoard: 'ประธานกรรมการ', status: 'EVALUATED', totalScore: '3.85' }
-        ]);
-        const hrStats = ref({ totalTeachers: 1, totalJudges: 1, totalAssignments: 1, completedAssignments: 1, averageScore: '3.85' });
+        const assignments = ref([]);
+        const hrStats = ref({ totalTeachers: 0, totalJudges: 0, totalAssignments: 0, pendingAssignments: 0, submittedAssignments: 0, completedAssignments: 0, averageScore: '0.00' });
         const newMetric = ref({ title: '', weight: 25, evalType: 'SCALE', evidenceType: 'PDF' });
         const newAssign = ref({ teacherId: '', judgeId: '', roleInBoard: 'ประธานกรรมการ' });
 
         // Teacher state
-        const teacherScores = ref({ 1: 4, 2: 3, 3: 'มี' });
+        const teacherScores = ref({});
         const teacherEvidence = ref({});
-        const teacherJudgeFeedback = ref('ผลการจัดทำแผนการสอนมีความครบถ้วนตามมาตรฐานวิชาชีพ มีหลักฐานการใช้สื่อนวัตกรรมดีเด่น');
+        const teacherJudgeFeedback = ref('');
 
         // Judge state
-        const judgeCandidates = ref([
-          { assignmentId: 1, teacherName: 'นายสมชาย ใจดี', department: 'แผนกวิชาเทคโนโลยีสารสนเทศ', roleInBoard: 'ประธานกรรมการ', status: 'รอตรวจ' }
-        ]);
+        const judgeCandidates = ref([]);
         const judgeSelectedIdx = ref(0);
-        const judgeScores = ref({ 1: '4', 2: '4', 3: '4' });
-        const judgeOverallFeedback = ref('ผลการปฏิบัติงานเป็นไปตามเกณฑ์ระดับดีเด่น มีการพัฒนาและเตรียมการสอนครบถ้วน');
+        const candidateGradingMetrics = ref([]);
+        const judgeScores = ref({});
+        const judgeOverallFeedback = ref('');
 
         // Report modal state
         const showReportModal = ref(false);
@@ -1230,11 +1364,11 @@
           return json;
         }
 
-        // Quick Presentation Access Helper
+        // Quick Presentation Access Helper (Unified Admin & HR)
         async function quickLogin(role) {
           authError.value = '';
           authSuccess.value = '';
-          let cId = '1100100000001', pass = 'hr1234';
+          let cId = '1100000000000', pass = 'admin1234'; // Admin with full Admin & HR power
           if (role === 'teacher') {
             cId = '1100200000002';
             pass = 'pass1234';
@@ -1268,7 +1402,7 @@
           }
         }
 
-        // Realistic Registration Handler (logs in as the newly registered user!)
+        // Registration Handler
         async function registerUser() {
           authError.value = '';
           authSuccess.value = '';
@@ -1293,7 +1427,6 @@
               authSuccess.value = `ลงทะเบียนสำเร็จ! ยินดีต้อนรับ ${res.data.user.name}`;
               await loadInitialData();
             } else {
-              // Direct login with newly registered credentials
               loginForm.value.citizenId = regForm.value.citizenId;
               loginForm.value.password = regForm.value.password;
               await login();
@@ -1398,20 +1531,65 @@
               const res = await fetchAPI('/evaluatee/sheet');
               if (res.data) {
                 if (res.data.metrics?.length) metrics.value = res.data.metrics;
-                if (res.data.judgeFeedback) teacherJudgeFeedback.value = res.data.judgeFeedback.overallFeedback;
+                // Hydrate saved self-scores and evidence
+                if (res.data.selfScores?.length) {
+                  const sMap = {};
+                  const eMap = {};
+                  res.data.selfScores.forEach(s => {
+                    sMap[s.metricId] = s.selfScore;
+                    if (s.evidenceUrl) eMap[s.metricId] = s.evidenceUrl;
+                  });
+                  teacherScores.value = sMap;
+                  teacherEvidence.value = eMap;
+                }
+                teacherJudgeFeedback.value = res.data.judgeFeedback ? res.data.judgeFeedback.overallFeedback : 'ยังไม่มีผลการประเมินหรือข้อเสนอแนะจากคณะกรรมการ';
               }
             } else if (currentUser.value.role === 'judge') {
               const res = await fetchAPI('/judge/assigned');
-              if (res.data?.length) judgeCandidates.value = res.data;
+              if (res.data?.length) {
+                judgeCandidates.value = res.data;
+                await selectJudgeCandidate(0);
+              }
             }
           } catch (e) {
             console.warn('Initial data load warning:', e.message);
           }
         }
 
+        // Judge Select Candidate & Load Real Candidate Grading Details
+        async function selectJudgeCandidate(idx) {
+          judgeSelectedIdx.value = idx;
+          const cand = judgeCandidates.value[idx];
+          if (!cand || !cand.assignmentId) return;
+
+          try {
+            const res = await fetchAPI(`/judge/grading/${cand.assignmentId}`);
+            if (res.data && res.data.metrics) {
+              candidateGradingMetrics.value = res.data.metrics;
+              // Reset and populate judgeScores
+              const newScores = {};
+              res.data.metrics.forEach(m => {
+                if (m.existingJudgeScore !== null && m.existingJudgeScore !== undefined) {
+                  newScores[m.metricId] = String(m.existingJudgeScore);
+                } else {
+                  newScores[m.metricId] = m.evalType === 'BOOLEAN' ? '4' : '3';
+                }
+              });
+              judgeScores.value = newScores;
+              judgeOverallFeedback.value = res.data.summary?.overallFeedback || '';
+            }
+          } catch (err) {
+            console.error('Failed to load candidate grading details:', err);
+          }
+        }
+
         // Computed properties
         const teachers = computed(() => usersList.value.filter(u => u.role === 'teacher'));
         const judges = computed(() => usersList.value.filter(u => u.role === 'judge'));
+
+        const totalMetricWeight = computed(() => {
+          return metrics.value.reduce((sum, m) => sum + (Number(m.weight) || 0), 0);
+        });
 
         const filteredUsers = computed(() => {
           return usersList.value.filter(u => {
@@ -1443,7 +1621,7 @@
           if (mode === 'add') {
             userModalForm.value = { prefix: 'นาย', fullname: '', citizenId: '', password: '', role: 'teacher', department: 'แผนกวิชาเทคโนโลยีสารสนเทศ', position: 'ครู คศ.1' };
           } else {
-            userModalForm.value = { prefix: u.prefix || 'นาย', fullname: u.name, citizenId: u.citizenId, password: u.password || '', role: u.role, department: u.department, position: u.position };
+            userModalForm.value = { prefix: u.prefix || 'นาย', fullname: u.name, citizenId: u.citizenId, password: '', role: u.role, department: u.department, position: u.position };
           }
           showUserModal.value = true;
         }
@@ -1465,14 +1643,35 @@
           }
         }
 
-        // Admin actions: Change Username & Password Modal
+        // Edit metric modal
+        function openEditMetricModal(m) {
+          editMetricForm.value = { id: m.id, title: m.title, weight: m.weight, evalType: m.evalType, evidenceType: m.evidenceType };
+          showEditMetricModal.value = true;
+        }
+
+        async function saveEditMetric() {
+          try {
+            await fetchAPI('/hr/metrics/' + editMetricForm.value.id, {
+              method: 'PUT',
+              body: JSON.stringify(editMetricForm.value)
+            });
+            alert('บันทึกการแก้ไขตัวชี้วัดสำเร็จ!');
+            showEditMetricModal.value = false;
+            const res = await fetchAPI('/hr/metrics');
+            if (res.data) metrics.value = res.data;
+          } catch (e) {
+            alert('เกิดข้อผิดพลาด: ' + e.message);
+          }
+        }
+
+        // Change Username & Password Modal
         function openAccountModal(u) {
           accountTargetUser.value = u;
           accountForm.value = {
             originalCitizenId: u.citizenId,
             newCitizenId: u.citizenId,
-            newPassword: u.password || '',
-            confirmPassword: u.password || ''
+            newPassword: '',
+            confirmPassword: ''
           };
           showAccountModal.value = true;
         }
@@ -1530,7 +1729,7 @@
         }
 
         async function deleteMetric(m, idx) {
-          if (!confirm('ต้องการลบตัวชี้วัดนี้?')) return;
+          if (!confirm(`ต้องการลบตัวชี้วัด "${m.title}" หรือไม่?`)) return;
           try {
             if (m.id) await fetchAPI('/hr/metrics/' + m.id, { method: 'DELETE' });
             metrics.value.splice(idx, 1);
@@ -1540,11 +1739,30 @@
 
         // Assignment actions
         async function saveAssign() {
+          // Client-side duplicate check
+          const dup = assignments.value.find(a => a.teacherId === newAssign.value.teacherId && a.judgeId === newAssign.value.judgeId);
+          if (dup) {
+            alert('คู่นี้ได้รับการจับคู่ในรอบนี้อยู่แล้ว!');
+            return;
+          }
           try {
             await fetchAPI('/hr/assignments', { method: 'POST', body: JSON.stringify(newAssign.value) });
             alert('มอบหมายกรรมการสำเร็จ!');
             const aRes = await fetchAPI('/hr/assignments');
             if (aRes.data) assignments.value = aRes.data;
+            const sRes = await fetchAPI('/hr/statistics');
+            if (sRes.data) hrStats.value = sRes.data;
+          } catch (e) { alert('เกิดข้อผิดพลาด: ' + e.message); }
+        }
+
+        async function removeAssignment(a) {
+          if (!confirm(`ยืนยันการยกเลิกการจับคู่ระหว่าง "${a.teacherName}" กับ "${a.judgeName}"?`)) return;
+          try {
+            await fetchAPI('/hr/assignments/' + a.id, { method: 'DELETE' });
+            assignments.value = assignments.value.filter(x => x.id !== a.id);
+            alert('ยกเลิกการจับคู่สำเร็จ');
+            const sRes = await fetchAPI('/hr/statistics');
+            if (sRes.data) hrStats.value = sRes.data;
           } catch (e) { alert('เกิดข้อผิดพลาด: ' + e.message); }
         }
 
@@ -1564,10 +1782,9 @@
           try {
             const res = await fetchAPI('/upload', { method: 'POST', body: fd });
             teacherEvidence.value[mId] = res.data.fileUrl;
-            alert('อัปโหลดไฟล์สำเร็จ!');
+            alert('อัปโหลดไฟล์สำเร็จ! (' + res.data.originalName + ')');
           } catch (err) {
-            teacherEvidence.value[mId] = file.name;
-            alert('เลือกไฟล์แล้ว: ' + file.name);
+            alert('อัปโหลดไฟล์ล้มเหลว: ' + err.message);
           }
         }
 
@@ -1579,7 +1796,7 @@
           }));
           try {
             await fetchAPI('/evaluatee/self-submit', { method: 'POST', body: JSON.stringify({ scores: payload }) });
-            alert('บันทึกการประเมินตนเองสำเร็จ! ข้อมูลถูกส่งไปยังกรรมการเรียบร้อยแล้ว');
+            alert('บันทึกการประเมินตนเองสำเร็จ! ข้อมูลถูกส่งไปยังคณะกรรมการเรียบร้อยแล้ว');
           } catch (e) { alert('เกิดข้อผิดพลาด: ' + e.message); }
         }
 
@@ -1601,6 +1818,8 @@
               });
               cand.status = 'EVALUATED';
               alert('บันทึกและส่งผลการประเมินสำเร็จ! คะแนนเฉลี่ย: ' + res.data.totalScore + ' / 4.00');
+              const aRes = await fetchAPI('/judge/assigned');
+              if (aRes.data?.length) judgeCandidates.value = aRes.data;
             }
           } catch (e) { alert('เกิดข้อผิดพลาด: ' + e.message); }
         }
@@ -1609,7 +1828,7 @@
         onMounted(async () => {
           if (currentUser.value) {
             await loadInitialData();
-            // Background check token validity
+            // Background verify token
             const token = localStorage.getItem('auth_token');
             if (token) {
               try {
@@ -1619,7 +1838,6 @@
                   localStorage.setItem('auth_user', JSON.stringify(res.data));
                 }
               } catch (e) {
-                // If 401/403 unauthorized, logout
                 if (e.message.includes('401') || e.message.includes('403')) {
                   logout();
                 }
@@ -1632,10 +1850,11 @@
           currentUser, authMode, authError, authSuccess, isAuthLoading, loginForm, regConsent, regSigMode, regForm,
           quickLogin, login, registerUser, onRegisterSigUpload, startDraw, drawing, stopDraw, touchStart, touchMove, clearIndexCanvas, captureIndexCanvas, logout,
           adminTab, usersList, userFilterRole, userSearchQuery, filteredUsers, showUserModal, userModalMode, userModalForm, openUserModal, saveUserModal, deleteUser,
+          showEditMetricModal, editMetricForm, openEditMetricModal, saveEditMetric,
           showAccountModal, accountTargetUser, accountForm, openAccountModal, saveAccountModal,
-          period, metrics, assignments, hrStats, newMetric, newAssign, teachers, judges, savePeriod, addMetric, deleteMetric, saveAssign, openReportModal, selectedReportItem, printModalReport,
+          period, metrics, totalMetricWeight, assignments, hrStats, newMetric, newAssign, teachers, judges, savePeriod, addMetric, deleteMetric, saveAssign, removeAssignment, openReportModal, selectedReportItem, printModalReport,
           teacherScores, teacherEvidence, teacherJudgeFeedback, teacherProgress, getLevelDesc, uploadTeacherFile, saveTeacherSelf, exportPDF,
-          judgeCandidates, judgeSelectedIdx, currentJudgeCandidate, judgeScores, judgeOverallFeedback, submitJudgeScore, showReportModal
+          judgeCandidates, judgeSelectedIdx, currentJudgeCandidate, candidateGradingMetrics, selectJudgeCandidate, judgeScores, judgeOverallFeedback, submitJudgeScore, showReportModal
         };
       }
     }).mount('#app');

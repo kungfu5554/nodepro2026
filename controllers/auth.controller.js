@@ -31,7 +31,7 @@ async function login(req, res, next) {
 
     const user = rows[0];
     const isMatch = await bcrypt.compare(password, user.password).catch(() => false);
-    const isPlainMatch = password === user.password; // Backward fallback
+    const isPlainMatch = (password === user.password); // Fallback if plain text seed
 
     if (!isMatch && !isPlainMatch) {
       return res.status(401).json({
@@ -97,11 +97,13 @@ async function register(req, res, next) {
       fullname, 
       department, 
       position, 
+      signature,
       signatureUrl 
     } = req.body;
 
     const finalCitizenId = (citizenId || username || '').trim();
     const finalName = (fullname || name || '').trim();
+    const finalSignature = signature || signatureUrl || null;
 
     if (!finalCitizenId) {
       return res.status(400).json({
@@ -134,12 +136,11 @@ async function register(req, res, next) {
     const completeName = finalName.startsWith(userPrefix) ? finalName : `${userPrefix} ${finalName}`;
 
     const [result] = await pool.query(`
-      INSERT INTO users (citizen_id, password, plain_password, prefix, name, role, role_title, department, position, email, phone, employee_id, signature_url)
-      VALUES (?, ?, ?, ?, ?, 'teacher', 'ผู้รับการประเมิน', ?, ?, ?, ?, ?, ?)
+      INSERT INTO users (citizen_id, password, prefix, name, role, role_title, department, position, email, phone, employee_id, signature_url)
+      VALUES (?, ?, ?, ?, 'teacher', 'ผู้รับการประเมิน', ?, ?, ?, ?, ?, ?)
     `, [
       finalCitizenId, 
       hashedPassword, 
-      password,
       userPrefix, 
       completeName, 
       department || 'แผนกวิชาเทคโนโลยีสารสนเทศ', 
@@ -147,7 +148,7 @@ async function register(req, res, next) {
       email || null,
       phone || null,
       employeeId || null,
-      signatureUrl || null
+      finalSignature
     ]);
 
     // Issue JWT token on registration so client can login immediately
@@ -180,7 +181,7 @@ async function register(req, res, next) {
           email: email || null,
           phone: phone || null,
           employeeId: employeeId || null,
-          signatureUrl: signatureUrl || null
+          signatureUrl: finalSignature
         }
       }
     });
@@ -220,4 +221,3 @@ module.exports = {
   register,
   getProfile
 };
-

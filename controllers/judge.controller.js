@@ -39,12 +39,13 @@ async function getCandidateDetailsForGrading(req, res, next) {
   try {
     const { assignmentId } = req.params;
 
-    // Verify assignment exists
+    // Verify assignment exists and authorize judge/admin/hr
     const [assignments] = await pool.query(`
       SELECT 
         a.id,
         a.period_id AS periodId,
         a.teacher_citizen_id AS teacherCitizenId,
+        a.judge_citizen_id AS judgeCitizenId,
         u_t.name AS teacherName,
         u_t.department,
         u_t.position,
@@ -64,6 +65,15 @@ async function getCandidateDetailsForGrading(req, res, next) {
     }
 
     const assignment = assignments[0];
+
+    // Authorization: only assigned judge or admin/hr
+    if (req.user.role === 'judge' && assignment.judgeCitizenId !== req.user.citizenId) {
+      return res.status(403).json({
+        status: 'error',
+        message: 'Forbidden: You are not authorized to grade this candidate.',
+        data: null
+      });
+    }
 
     // Fetch metrics along with candidate's self scores and previous judge scores
     const [metricRows] = await pool.query(`
@@ -107,13 +117,15 @@ async function getCandidateDetailsForGrading(req, res, next) {
   }
 }
 
-// Submit judge scores, overall feedback, and signature (Criteria 5.3.4 - 5.3.8)
+// Submit judge scores, overall feedback, and signature
 async function submitEvaluation(req, res, next) {
+  const conn = await pool.getConnection();
   try {
     const { assignmentId } = req.params;
     const { scores, overallFeedback, signature } = req.body;
 
     if (!scores || typeof scores !== 'object') {
+      conn.release();
       return res.status(400).json({
         status: 'error',
         message: 'Scores object mapping metricId to score is required.',
@@ -121,9 +133,10 @@ async function submitEvaluation(req, res, next) {
       });
     }
 
-    // Verify assignment exists
-    const [assignments] = await pool.query('SELECT * FROM assignments WHERE id = ?', [assignmentId]);
+    // Verify assignment exists and authorize
+    const [assignments] = await conn.query('SELECT * FROM assignments WHERE id = ?', [assignmentId]);
     if (assignments.length === 0) {
+      conn.release();
       return res.status(404).json({
         status: 'error',
         message: 'Assignment not found.',
@@ -133,20 +146,52 @@ async function submitEvaluation(req, res, next) {
 
     const assignment = assignments[0];
 
+    // Authorization
+    if (req.user.role === 'judge' && assignment.judge_citizen_id !== req.user.citizenId) {
+      conn.release();
+      return res.status(403).json({
+        status: 'error',
+        message: 'Forbidden: You are not assigned to evaluate this candidate.',
+        data: null
+      });
+    }
+
+    // Check if period is open
+    const [periods] = await conn.query('SELECT is_open FROM evaluation_periods WHERE id = ?', [assignment.period_id]);
+    if (periods.length > 0 && !periods[0].is_open) {
+      conn.release();
+      return res.status(403).json({
+        status: 'error',
+        message: 'Evaluation period is currently closed.',
+        data: null
+      });
+    }
+
     // Get metrics to calculate weighted score
-    const [metrics] = await pool.query('SELECT id, weight FROM metrics WHERE period_id = ?', [assignment.period_id]);
-    const metricMap = new Map(metrics.map(m => [m.id, m.weight]));
+    const [metrics] = await conn.query('SELECT id, weight, eval_type FROM metrics WHERE period_id = ?', [assignment.period_id]);
+    const metricMap = new Map(metrics.map(m => [m.id, m]));
 
     let totalWeightedScore = 0;
     let totalWeight = 0;
 
+    await conn.beginTransaction();
+
     // Save individual metric scores
     for (const [metricIdStr, rawScore] of Object.entries(scores)) {
       const metricId = parseInt(metricIdStr, 10);
-      const score = parseFloat(rawScore) || 0;
-      const weight = metricMap.get(metricId) || 0;
+      const metricDef = metricMap.get(metricId);
+      if (!metricDef) continue;
 
-      await pool.query(`
+      let score = 0;
+      if (metricDef.eval_type === 'BOOLEAN') {
+        score = (rawScore === 'มี' || rawScore === 4 || rawScore === '4' || rawScore === true) ? 4.00 : 0.00;
+      } else {
+        score = Math.min(4, Math.max(0, parseFloat(rawScore) || 0));
+      }
+
+      const weight = metricDef.weight || 0;
+
+      await conn.query(`
         INSERT INTO judge_evaluations (assignment_id, metric_id, judge_score)
         VALUES (?, ?, ?)
         ON DUPLICATE KEY UPDATE judge_score = VALUES(judge_score)
@@ -159,8 +204,8 @@ async function submitEvaluation(req, res, next) {
     // Normalized average out of 4.00
     const finalScore = totalWeight > 0 ? (totalWeightedScore / totalWeight) : 0;
 
-    // Save summary and digital signature (Criteria 5.3.7 - 5.3.8)
-    await pool.query(`
+    // Save summary and digital signature
+    await conn.query(`
       INSERT INTO evaluation_summaries (assignment_id, total_score, overall_feedback, judge_signature)
       VALUES (?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
@@ -171,7 +216,10 @@ async function submitEvaluation(req, res, next) {
     `, [assignmentId, finalScore.toFixed(2), overallFeedback || '', signature || req.user.name]);
 
     // Mark assignment as EVALUATED
-    await pool.query("UPDATE assignments SET status = 'EVALUATED' WHERE id = ?", [assignmentId]);
+    await conn.query("UPDATE assignments SET status = 'EVALUATED' WHERE id = ?", [assignmentId]);
+
+    await conn.commit();
+    conn.release();
 
     res.status(200).json({
       status: 'success',
@@ -182,6 +230,8 @@ async function submitEvaluation(req, res, next) {
       }
     });
   } catch (error) {
+    await conn.rollback();
+    conn.release();
     next(error);
   }
 }
@@ -191,4 +241,3 @@ module.exports = {
   getCandidateDetailsForGrading,
   submitEvaluation
 };
-

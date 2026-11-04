@@ -34,7 +34,7 @@ async function initializeDatabase(maxRetries = 10, delayMs = 3000) {
       await adminConn.query(`CREATE DATABASE IF NOT EXISTS \`${dbName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`);
       await adminConn.end();
 
-      // 2. Create tables
+      // 2. Create tables with updated schema
       await pool.query(`
         CREATE TABLE IF NOT EXISTS users (
           id INT AUTO_INCREMENT PRIMARY KEY,
@@ -49,18 +49,19 @@ async function initializeDatabase(maxRetries = 10, delayMs = 3000) {
           email VARCHAR(120) DEFAULT NULL,
           phone VARCHAR(50) DEFAULT NULL,
           employee_id VARCHAR(50) DEFAULT NULL,
-          signature_url VARCHAR(255) DEFAULT NULL,
+          signature_url LONGTEXT DEFAULT NULL,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
           INDEX idx_role (role)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
       `);
 
-      // Ensure optional columns exist for compatibility
+      // Ensure columns exist and have compatible types
       try { await pool.query('ALTER TABLE users ADD COLUMN email VARCHAR(120) DEFAULT NULL;'); } catch (e) {}
       try { await pool.query('ALTER TABLE users ADD COLUMN phone VARCHAR(50) DEFAULT NULL;'); } catch (e) {}
       try { await pool.query('ALTER TABLE users ADD COLUMN employee_id VARCHAR(50) DEFAULT NULL;'); } catch (e) {}
-      try { await pool.query('ALTER TABLE users ADD COLUMN plain_password VARCHAR(255) DEFAULT NULL;'); } catch (e) {}
+      try { await pool.query('ALTER TABLE users MODIFY signature_url LONGTEXT DEFAULT NULL;'); } catch (e) {}
+      try { await pool.query('ALTER TABLE users MODIFY citizen_id VARCHAR(50) NOT NULL;'); } catch (e) {}
 
       await pool.query(`
         CREATE TABLE IF NOT EXISTS evaluation_periods (
@@ -93,24 +94,30 @@ async function initializeDatabase(maxRetries = 10, delayMs = 3000) {
         CREATE TABLE IF NOT EXISTS assignments (
           id INT AUTO_INCREMENT PRIMARY KEY,
           period_id INT NOT NULL,
-          teacher_citizen_id VARCHAR(13) NOT NULL,
-          judge_citizen_id VARCHAR(13) NOT NULL,
+          teacher_citizen_id VARCHAR(50) NOT NULL,
+          judge_citizen_id VARCHAR(50) NOT NULL,
           role_in_board VARCHAR(50) NOT NULL DEFAULT 'ประธานกรรมการ',
           status ENUM('PENDING', 'SUBMITTED', 'EVALUATED') NOT NULL DEFAULT 'PENDING',
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
           FOREIGN KEY (period_id) REFERENCES evaluation_periods(id) ON DELETE CASCADE,
-          FOREIGN KEY (teacher_citizen_id) REFERENCES users(citizen_id) ON DELETE CASCADE,
-          FOREIGN KEY (judge_citizen_id) REFERENCES users(citizen_id) ON DELETE CASCADE,
+          FOREIGN KEY (teacher_citizen_id) REFERENCES users(citizen_id) ON DELETE CASCADE ON UPDATE CASCADE,
+          FOREIGN KEY (judge_citizen_id) REFERENCES users(citizen_id) ON DELETE CASCADE ON UPDATE CASCADE,
           UNIQUE KEY uq_assignment (period_id, teacher_citizen_id, judge_citizen_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
       `);
+
+      // Ensure assignments columns & FKs are updated
+      try {
+        await pool.query('ALTER TABLE assignments MODIFY teacher_citizen_id VARCHAR(50) NOT NULL;');
+        await pool.query('ALTER TABLE assignments MODIFY judge_citizen_id VARCHAR(50) NOT NULL;');
+      } catch (e) {}
 
       await pool.query(`
         CREATE TABLE IF NOT EXISTS self_evaluations (
           id INT AUTO_INCREMENT PRIMARY KEY,
           period_id INT NOT NULL,
-          teacher_citizen_id VARCHAR(13) NOT NULL,
+          teacher_citizen_id VARCHAR(50) NOT NULL,
           metric_id INT NOT NULL,
           self_score VARCHAR(20) NOT NULL,
           evidence_url TEXT DEFAULT NULL,
@@ -118,18 +125,22 @@ async function initializeDatabase(maxRetries = 10, delayMs = 3000) {
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
           FOREIGN KEY (period_id) REFERENCES evaluation_periods(id) ON DELETE CASCADE,
-          FOREIGN KEY (teacher_citizen_id) REFERENCES users(citizen_id) ON DELETE CASCADE,
+          FOREIGN KEY (teacher_citizen_id) REFERENCES users(citizen_id) ON DELETE CASCADE ON UPDATE CASCADE,
           FOREIGN KEY (metric_id) REFERENCES metrics(id) ON DELETE CASCADE,
           UNIQUE KEY uq_teacher_metric (period_id, teacher_citizen_id, metric_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
       `);
+
+      try {
+        await pool.query('ALTER TABLE self_evaluations MODIFY teacher_citizen_id VARCHAR(50) NOT NULL;');
+      } catch (e) {}
 
       await pool.query(`
         CREATE TABLE IF NOT EXISTS judge_evaluations (
           id INT AUTO_INCREMENT PRIMARY KEY,
           assignment_id INT NOT NULL,
           metric_id INT NOT NULL,
-          judge_score INT NOT NULL,
+          judge_score DECIMAL(5,2) NOT NULL,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
           FOREIGN KEY (assignment_id) REFERENCES assignments(id) ON DELETE CASCADE,
@@ -137,6 +148,10 @@ async function initializeDatabase(maxRetries = 10, delayMs = 3000) {
           UNIQUE KEY uq_assign_metric (assignment_id, metric_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
       `);
+
+      try {
+        await pool.query('ALTER TABLE judge_evaluations MODIFY judge_score DECIMAL(5,2) NOT NULL;');
+      } catch (e) {}
 
       await pool.query(`
         CREATE TABLE IF NOT EXISTS evaluation_summaries (
@@ -210,13 +225,20 @@ async function initializeDatabase(maxRetries = 10, delayMs = 3000) {
       ];
 
       for (const u of defaultUsers) {
-        const [existing] = await pool.query('SELECT id FROM users WHERE citizen_id = ?', [u.citizen_id]);
+        const [existing] = await pool.query('SELECT id, password FROM users WHERE citizen_id = ?', [u.citizen_id]);
         if (existing.length === 0) {
           const hashedPassword = await bcrypt.hash(u.password, 10);
           await pool.query(`
             INSERT INTO users (citizen_id, password, prefix, name, role, role_title, department, position)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
           `, [u.citizen_id, hashedPassword, u.prefix, u.name, u.role, u.role_title, u.department, u.position]);
+        } else {
+          // If password doesn't match default password, update it so default seed accounts always work
+          const isMatch = await bcrypt.compare(u.password, existing[0].password).catch(() => false);
+          if (!isMatch) {
+            const hashedPassword = await bcrypt.hash(u.password, 10);
+            await pool.query('UPDATE users SET password = ? WHERE citizen_id = ?', [hashedPassword, u.citizen_id]);
+          }
         }
       }
 

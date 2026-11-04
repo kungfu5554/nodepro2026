@@ -1,0 +1,9 @@
+node_modules
+.git
+.env
+uploads/*
+!uploads/.gitkeep
+front-end
+front-end final
+online
+npm-debug.log

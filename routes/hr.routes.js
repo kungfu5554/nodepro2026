@@ -13,14 +13,15 @@ router.put('/period/:id', requireRole('admin', 'hr'), hrController.updatePeriod)
 // Metrics management
 router.get('/metrics', hrController.getMetrics);
 router.post('/metrics', requireRole('admin', 'hr'), hrController.createMetric);
+router.put('/metrics/:id', requireRole('admin', 'hr'), hrController.updateMetric);
 router.delete('/metrics/:id', requireRole('admin', 'hr'), hrController.deleteMetric);
 
 // Assignment management
-router.get('/assignments', hrController.getAssignments);
+router.get('/assignments', requireRole('admin', 'hr'), hrController.getAssignments);
 router.post('/assignments', requireRole('admin', 'hr'), hrController.createAssignment);
+router.delete('/assignments/:id', requireRole('admin', 'hr'), hrController.deleteAssignment);
 
 // Overview statistics
 router.get('/statistics', requireRole('admin', 'hr'), hrController.getStatistics);
 
 module.exports = router;
-

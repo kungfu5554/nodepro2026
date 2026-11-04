@@ -2,6 +2,10 @@
 
 // Centralized error handling middleware
 function errorHandler(err, req, res, next) {
+  if (res.headersSent) {
+    return next(err);
+  }
+
   console.error('[Error]', err.stack || err.message);
 
   const statusCode = err.status || 500;
@@ -25,4 +29,3 @@ module.exports = {
   errorHandler,
   notFoundHandler
 };
-

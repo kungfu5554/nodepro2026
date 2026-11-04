@@ -2,6 +2,7 @@
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 
 // Ensure upload directory exists
 const uploadDir = path.join(__dirname, '..', 'uploads');
@@ -9,15 +10,15 @@ if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
 
-// Configure storage destination and filename formatting
+// Configure storage destination and safe filename formatting
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
-    const timestamp = Date.now();
-    const cleanOriginalName = file.originalname.replace(/\s+/g, '_');
-    cb(null, `${timestamp}-${cleanOriginalName}`);
+    const ext = path.extname(file.originalname).toLowerCase();
+    const safeName = `${Date.now()}-${crypto.randomBytes(6).toString('hex')}${ext}`;
+    cb(null, safeName);
   }
 });
 
@@ -29,7 +30,9 @@ const fileFilter = (req, file, cb) => {
   if (allowedExtensions.includes(ext)) {
     cb(null, true);
   } else {
-    cb(new Error('Invalid file type. Only PDF and Image files are permitted.'), false);
+    const err = new Error('Invalid file type. Only PDF and Image files are permitted.');
+    err.status = 400;
+    cb(err, false);
   }
 };
 
@@ -42,4 +45,3 @@ const upload = multer({
 });
 
 module.exports = upload;
-

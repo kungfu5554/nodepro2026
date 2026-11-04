@@ -2,18 +2,26 @@
 const { pool } = require('../config/database');
 
 // ============================================================================
-// 1. Evaluation Period Management (Criteria 5.1.1 - 5.1.2)
+// 1. Evaluation Period Management
 // ============================================================================
 
 // Get active or first evaluation period
 async function getPeriod(req, res, next) {
   try {
-    const [rows] = await pool.query(`
+    const periodId = req.query.periodId;
+    let query = `
       SELECT id, name, DATE_FORMAT(start_date, '%Y-%m-%d') AS startDate, DATE_FORMAT(end_date, '%Y-%m-%d') AS endDate, is_open AS isOpen
       FROM evaluation_periods
-      ORDER BY id ASC
-      LIMIT 1
-    `);
+    `;
+    const params = [];
+    if (periodId) {
+      query += ' WHERE id = ?';
+      params.push(periodId);
+    } else {
+      query += ' ORDER BY id ASC LIMIT 1';
+    }
+
+    const [rows] = await pool.query(query, params);
 
     if (rows.length === 0) {
       return res.status(404).json({
@@ -39,6 +47,14 @@ async function updatePeriod(req, res, next) {
     const { id } = req.params;
     const { name, startDate, endDate, isOpen } = req.body;
 
+    if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Start date cannot be after end date.',
+        data: null
+      });
+    }
+
     await pool.query(`
       UPDATE evaluation_periods
       SET name = COALESCE(?, name),
@@ -59,7 +75,7 @@ async function updatePeriod(req, res, next) {
 }
 
 // ============================================================================
-// 2. Metrics Management (Criteria 5.1.3 - 5.1.5)
+// 2. Metrics Management
 // ============================================================================
 
 // Get all metrics
@@ -88,7 +104,7 @@ async function createMetric(req, res, next) {
   try {
     const { title, description, weight, evalType, evidenceType, periodId } = req.body;
 
-    if (!title || !weight) {
+    if (!title || weight === undefined || weight === null) {
       return res.status(400).json({
         status: 'error',
         message: 'Metric title and weight are required.',
@@ -96,25 +112,81 @@ async function createMetric(req, res, next) {
       });
     }
 
+    const numWeight = parseInt(weight, 10);
+    if (isNaN(numWeight) || numWeight <= 0) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Weight must be a positive integer.',
+        data: null
+      });
+    }
+
     const [result] = await pool.query(`
       INSERT INTO metrics (period_id, title, description, weight, eval_type, evidence_type)
       VALUES (?, ?, ?, ?, ?, ?)
-    `, [periodId || 1, title, description || null, weight, evalType || 'SCALE', evidenceType || 'PDF']);
+    `, [periodId || 1, title, description || null, numWeight, evalType || 'SCALE', evidenceType || 'PDF']);
 
     res.status(201).json({
       status: 'success',
       message: 'Metric created successfully.',
-      data: { id: result.insertId, title, weight, evalType, evidenceType }
+      data: { id: result.insertId, title, weight: numWeight, evalType: evalType || 'SCALE', evidenceType: evidenceType || 'PDF' }
     });
   } catch (error) {
     next(error);
   }
 }
 
-// Delete metric
+// Update existing metric
+async function updateMetric(req, res, next) {
+  try {
+    const { id } = req.params;
+    const { title, description, weight, evalType, evidenceType } = req.body;
+
+    const numWeight = weight !== undefined ? parseInt(weight, 10) : null;
+
+    const [result] = await pool.query(`
+      UPDATE metrics
+      SET title = COALESCE(?, title),
+          description = COALESCE(?, description),
+          weight = COALESCE(?, weight),
+          eval_type = COALESCE(?, eval_type),
+          evidence_type = COALESCE(?, evidence_type)
+      WHERE id = ?
+    `, [title, description, numWeight, evalType, evidenceType, id]);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Metric not found.',
+        data: null
+      });
+    }
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Metric updated successfully.',
+      data: null
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// Delete metric safely (check submissions first)
 async function deleteMetric(req, res, next) {
   try {
     const { id } = req.params;
+
+    // Check if there are active submissions referencing this metric
+    const [subs] = await pool.query('SELECT COUNT(*) AS count FROM self_evaluations WHERE metric_id = ?', [id]);
+    if (subs[0].count > 0) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Cannot delete metric: teachers have already submitted self-evaluations under this indicator.',
+        data: null
+      });
+    }
+
     await pool.query('DELETE FROM metrics WHERE id = ?', [id]);
     res.status(200).json({
       status: 'success',
@@ -127,7 +199,7 @@ async function deleteMetric(req, res, next) {
 }
 
 // ============================================================================
-// 3. Assignment Management (Criteria 5.1.6 - 5.1.9)
+// 3. Assignment Management
 // ============================================================================
 
 // Get assignments list with teacher and judge names
@@ -141,12 +213,14 @@ async function getAssignments(req, res, next) {
         a.teacher_citizen_id AS teacherId,
         u_t.name AS teacherName,
         u_t.department AS teacherDepartment,
+        u_t.position AS teacherPosition,
         a.judge_citizen_id AS judgeId,
         u_j.name AS judgeName,
         a.role_in_board AS roleInBoard,
         a.status,
         es.total_score AS totalScore,
-        es.overall_feedback AS overallFeedback
+        es.overall_feedback AS overallFeedback,
+        es.submitted_at AS evaluatedAt
       FROM assignments a
       JOIN users u_t ON a.teacher_citizen_id = u_t.citizen_id
       JOIN users u_j ON a.judge_citizen_id = u_j.citizen_id
@@ -178,6 +252,14 @@ async function createAssignment(req, res, next) {
       });
     }
 
+    if (teacherId === judgeId) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'A candidate cannot be assigned to evaluate themselves.',
+        data: null
+      });
+    }
+
     const [existing] = await pool.query(`
       SELECT id FROM assignments
       WHERE period_id = ? AND teacher_citizen_id = ? AND judge_citizen_id = ?
@@ -186,7 +268,7 @@ async function createAssignment(req, res, next) {
     if (existing.length > 0) {
       return res.status(409).json({
         status: 'error',
-        message: 'This assignment already exists.',
+        message: 'This assignment pairing already exists for this round.',
         data: null
       });
     }
@@ -206,21 +288,46 @@ async function createAssignment(req, res, next) {
   }
 }
 
+// Delete / unassign committee pairing
+async function deleteAssignment(req, res, next) {
+  try {
+    const { id } = req.params;
+
+    const [result] = await pool.query('DELETE FROM assignments WHERE id = ?', [id]);
+    if (result.affectedRows === 0) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Assignment not found.',
+        data: null
+      });
+    }
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Assignment removed successfully.',
+      data: null
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 // ============================================================================
-// 4. Tracking & Statistics (Criteria 5.1.10 - 5.1.13)
+// 4. Tracking & Statistics
 // ============================================================================
 
-// Get overall statistics (Criteria 3.2.5.1 #9: Overall statistics & average score)
 async function getStatistics(req, res, next) {
   try {
     const periodId = req.query.periodId || 1;
 
-    // Total teachers and judges
+    // Total counts
     const [[{ totalTeachers }]] = await pool.query("SELECT COUNT(*) AS totalTeachers FROM users WHERE role = 'teacher'");
     const [[{ totalJudges }]] = await pool.query("SELECT COUNT(*) AS totalJudges FROM users WHERE role = 'judge'");
 
-    // Total assignments and completion counts
+    // Assignment status breakdown
     const [[{ totalAssignments }]] = await pool.query('SELECT COUNT(*) AS totalAssignments FROM assignments WHERE period_id = ?', [periodId]);
+    const [[{ pendingAssignments }]] = await pool.query("SELECT COUNT(*) AS pendingAssignments FROM assignments WHERE period_id = ? AND status = 'PENDING'", [periodId]);
+    const [[{ submittedAssignments }]] = await pool.query("SELECT COUNT(*) AS submittedAssignments FROM assignments WHERE period_id = ? AND status = 'SUBMITTED'", [periodId]);
     const [[{ completedAssignments }]] = await pool.query("SELECT COUNT(*) AS completedAssignments FROM assignments WHERE period_id = ? AND status = 'EVALUATED'", [periodId]);
 
     // Average score calculation
@@ -238,6 +345,8 @@ async function getStatistics(req, res, next) {
         totalTeachers,
         totalJudges,
         totalAssignments,
+        pendingAssignments,
+        submittedAssignments,
         completedAssignments,
         averageScore: parseFloat(avgScore).toFixed(2)
       }
@@ -252,9 +361,10 @@ module.exports = {
   updatePeriod,
   getMetrics,
   createMetric,
+  updateMetric,
   deleteMetric,
   getAssignments,
   createAssignment,
+  deleteAssignment,
   getStatistics
 };
-
