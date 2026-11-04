@@ -10,6 +10,7 @@ const pool = mysql.createPool({
   user: process.env.DB_USER || 'root',
   password: process.env.DB_PASSWORD || '12345',
   database: process.env.DB_NAME || 'my_app_db',
+  charset: 'utf8mb4',
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0
@@ -27,7 +28,8 @@ async function initializeDatabase(maxRetries = 10, delayMs = 3000) {
         host: process.env.DB_HOST || 'localhost',
         port: parseInt(process.env.DB_PORT || '3306', 10),
         user: process.env.DB_USER || 'root',
-        password: process.env.DB_PASSWORD || '12345'
+        password: process.env.DB_PASSWORD || '12345',
+        charset: 'utf8mb4'
       });
 
       const dbName = process.env.DB_NAME || 'my_app_db';
@@ -167,17 +169,21 @@ async function initializeDatabase(maxRetries = 10, delayMs = 3000) {
 
       // 3. Seed initial evaluation period
       await pool.query(`
-        INSERT IGNORE INTO evaluation_periods (id, name, start_date, end_date, is_open)
-        VALUES (1, 'รอบประเมินประจำปี 2568', '2026-10-01', '2026-11-30', 1);
+        INSERT INTO evaluation_periods (id, name, start_date, end_date, is_open)
+        VALUES (1, 'รอบประเมินประจำปี 2568', '2026-10-01', '2026-11-30', 1)
+        ON DUPLICATE KEY UPDATE name = VALUES(name);
       `);
 
       // 4. Seed initial metrics
       await pool.query(`
-        INSERT IGNORE INTO metrics (id, period_id, title, description, weight, eval_type, evidence_type)
+        INSERT INTO metrics (id, period_id, title, description, weight, eval_type, evidence_type)
         VALUES
           (1, 1, 'ด้านการจัดการเรียนรู้และการพัฒนาผู้เรียน', 'การจัดทำแผนการจัดการเรียนรู้และสื่อการสอน', 40, 'SCALE', 'PDF'),
           (2, 1, 'ด้านการพัฒนาตนเองและวิชาชีพ', 'การเข้ารับการอบรมและพัฒนาสมรรถนะวิชาชีพ', 30, 'SCALE', 'URL'),
-          (3, 1, 'การมีส่วนร่วมในกิจกรรมสถานศึกษา', 'การเข้าร่วมโครงการและกิจกรรมของสถานศึกษา', 30, 'BOOLEAN', 'IMAGE');
+          (3, 1, 'การมีส่วนร่วมในกิจกรรมสถานศึกษา', 'การเข้าร่วมโครงการและกิจกรรมของสถานศึกษา', 30, 'BOOLEAN', 'IMAGE')
+        ON DUPLICATE KEY UPDATE 
+          title = VALUES(title),
+          description = VALUES(description);
       `);
 
       // 5. Seed default test accounts
@@ -235,17 +241,20 @@ async function initializeDatabase(maxRetries = 10, delayMs = 3000) {
         } else {
           // If password doesn't match default password, update it so default seed accounts always work
           const isMatch = await bcrypt.compare(u.password, existing[0].password).catch(() => false);
-          if (!isMatch) {
-            const hashedPassword = await bcrypt.hash(u.password, 10);
-            await pool.query('UPDATE users SET password = ? WHERE citizen_id = ?', [hashedPassword, u.citizen_id]);
-          }
+          const hashedPassword = isMatch ? existing[0].password : await bcrypt.hash(u.password, 10);
+          await pool.query(`
+            UPDATE users 
+            SET password = ?, prefix = ?, name = ?, role = ?, role_title = ?, department = ?, position = ?
+            WHERE citizen_id = ?
+          `, [hashedPassword, u.prefix, u.name, u.role, u.role_title, u.department, u.position, u.citizen_id]);
         }
       }
 
       // 6. Seed initial assignment
       await pool.query(`
-        INSERT IGNORE INTO assignments (id, period_id, teacher_citizen_id, judge_citizen_id, role_in_board, status)
-        VALUES (1, 1, '1100200000002', '1100300000003', 'ประธานกรรมการ', 'PENDING');
+        INSERT INTO assignments (id, period_id, teacher_citizen_id, judge_citizen_id, role_in_board, status)
+        VALUES (1, 1, '1100200000002', '1100300000003', 'ประธานกรรมการ', 'PENDING')
+        ON DUPLICATE KEY UPDATE role_in_board = VALUES(role_in_board);
       `);
 
       console.log('[DB] Database tables and initial seed initialized successfully.');

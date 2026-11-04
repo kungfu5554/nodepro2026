@@ -30,6 +30,9 @@ services:
     image: mysql:8.0
     container_name: mysql-database
     restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
     ports:
       - "3307:3306"
     environment:
