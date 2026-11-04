@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  # 1. Node.js Express Application
+  web-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: node-server-app
+    ports:
+      - "2000:2000"
+    environment:
+      - PORT=2000
+      - DB_HOST=db-mysql
+      - DB_PORT=3306
+      - DB_USER=root
+      - DB_PASSWORD=12345
+      - DB_NAME=my_app_db
+      - JWT_SECRET=evaluation_system_jwt_secret_key_2026
+      - JWT_EXPIRES_IN=7d
+    depends_on:
+      - db-mysql
+    networks:
+      - app-network
+
+  # 2. MySQL Database
+  db-mysql:
+    image: mysql:8.0
+    container_name: mysql-database
+    ports:
+      - "3307:3306"
+    environment:
+      - MYSQL_ROOT_PASSWORD=12345
+      - MYSQL_DATABASE=my_app_db
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - app-network
+
+  # 3. phpMyAdmin Web Panel
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: myadmin-panel
+    ports:
+      - "8081:80"
+    environment:
+      - PMA_HOST=db-mysql
+      - PMA_PORT=3306
+    depends_on:
+      - db-mysql
+    networks:
+      - app-network
+
+volumes:
+  mysql_data:
+
+networks:
+  app-network:
+    driver: bridge

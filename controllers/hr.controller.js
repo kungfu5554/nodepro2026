@@ -1,0 +1,260 @@
+// controllers/hr.controller.js
+const { pool } = require('../config/database');
+
+// ============================================================================
+// 1. Evaluation Period Management (Criteria 5.1.1 - 5.1.2)
+// ============================================================================
+
+// Get active or first evaluation period
+async function getPeriod(req, res, next) {
+  try {
+    const [rows] = await pool.query(`
+      SELECT id, name, DATE_FORMAT(start_date, '%Y-%m-%d') AS startDate, DATE_FORMAT(end_date, '%Y-%m-%d') AS endDate, is_open AS isOpen
+      FROM evaluation_periods
+      ORDER BY id ASC
+      LIMIT 1
+    `);
+
+    if (rows.length === 0) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'No evaluation period found.',
+        data: null
+      });
+    }
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Evaluation period retrieved.',
+      data: rows[0]
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// Update period details or toggle open status
+async function updatePeriod(req, res, next) {
+  try {
+    const { id } = req.params;
+    const { name, startDate, endDate, isOpen } = req.body;
+
+    await pool.query(`
+      UPDATE evaluation_periods
+      SET name = COALESCE(?, name),
+          start_date = COALESCE(?, start_date),
+          end_date = COALESCE(?, end_date),
+          is_open = COALESCE(?, is_open)
+      WHERE id = ?
+    `, [name, startDate, endDate, isOpen !== undefined ? (isOpen ? 1 : 0) : null, id]);
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Evaluation period updated successfully.',
+      data: null
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// ============================================================================
+// 2. Metrics Management (Criteria 5.1.3 - 5.1.5)
+// ============================================================================
+
+// Get all metrics
+async function getMetrics(req, res, next) {
+  try {
+    const periodId = req.query.periodId || 1;
+    const [rows] = await pool.query(`
+      SELECT id, period_id AS periodId, title, description, weight, eval_type AS evalType, evidence_type AS evidenceType
+      FROM metrics
+      WHERE period_id = ?
+      ORDER BY id ASC
+    `, [periodId]);
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Metrics retrieved.',
+      data: rows
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// Create new metric
+async function createMetric(req, res, next) {
+  try {
+    const { title, description, weight, evalType, evidenceType, periodId } = req.body;
+
+    if (!title || !weight) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Metric title and weight are required.',
+        data: null
+      });
+    }
+
+    const [result] = await pool.query(`
+      INSERT INTO metrics (period_id, title, description, weight, eval_type, evidence_type)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `, [periodId || 1, title, description || null, weight, evalType || 'SCALE', evidenceType || 'PDF']);
+
+    res.status(201).json({
+      status: 'success',
+      message: 'Metric created successfully.',
+      data: { id: result.insertId, title, weight, evalType, evidenceType }
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// Delete metric
+async function deleteMetric(req, res, next) {
+  try {
+    const { id } = req.params;
+    await pool.query('DELETE FROM metrics WHERE id = ?', [id]);
+    res.status(200).json({
+      status: 'success',
+      message: 'Metric deleted successfully.',
+      data: null
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// ============================================================================
+// 3. Assignment Management (Criteria 5.1.6 - 5.1.9)
+// ============================================================================
+
+// Get assignments list with teacher and judge names
+async function getAssignments(req, res, next) {
+  try {
+    const periodId = req.query.periodId || 1;
+    const [rows] = await pool.query(`
+      SELECT 
+        a.id,
+        a.period_id AS periodId,
+        a.teacher_citizen_id AS teacherId,
+        u_t.name AS teacherName,
+        u_t.department AS teacherDepartment,
+        a.judge_citizen_id AS judgeId,
+        u_j.name AS judgeName,
+        a.role_in_board AS roleInBoard,
+        a.status,
+        es.total_score AS totalScore,
+        es.overall_feedback AS overallFeedback
+      FROM assignments a
+      JOIN users u_t ON a.teacher_citizen_id = u_t.citizen_id
+      JOIN users u_j ON a.judge_citizen_id = u_j.citizen_id
+      LEFT JOIN evaluation_summaries es ON a.id = es.assignment_id
+      WHERE a.period_id = ?
+      ORDER BY a.id DESC
+    `, [periodId]);
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Assignments retrieved.',
+      data: rows
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// Assign judge to evaluatee
+async function createAssignment(req, res, next) {
+  try {
+    const { teacherId, judgeId, roleInBoard, periodId } = req.body;
+
+    if (!teacherId || !judgeId) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Teacher citizen ID and Judge citizen ID are required.',
+        data: null
+      });
+    }
+
+    const [existing] = await pool.query(`
+      SELECT id FROM assignments
+      WHERE period_id = ? AND teacher_citizen_id = ? AND judge_citizen_id = ?
+    `, [periodId || 1, teacherId, judgeId]);
+
+    if (existing.length > 0) {
+      return res.status(409).json({
+        status: 'error',
+        message: 'This assignment already exists.',
+        data: null
+      });
+    }
+
+    const [result] = await pool.query(`
+      INSERT INTO assignments (period_id, teacher_citizen_id, judge_citizen_id, role_in_board, status)
+      VALUES (?, ?, ?, ?, 'PENDING')
+    `, [periodId || 1, teacherId, judgeId, roleInBoard || 'ประธานกรรมการ']);
+
+    res.status(201).json({
+      status: 'success',
+      message: 'Judge assigned successfully.',
+      data: { id: result.insertId }
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// ============================================================================
+// 4. Tracking & Statistics (Criteria 5.1.10 - 5.1.13)
+// ============================================================================
+
+// Get overall statistics (Criteria 3.2.5.1 #9: Overall statistics & average score)
+async function getStatistics(req, res, next) {
+  try {
+    const periodId = req.query.periodId || 1;
+
+    // Total teachers and judges
+    const [[{ totalTeachers }]] = await pool.query("SELECT COUNT(*) AS totalTeachers FROM users WHERE role = 'teacher'");
+    const [[{ totalJudges }]] = await pool.query("SELECT COUNT(*) AS totalJudges FROM users WHERE role = 'judge'");
+
+    // Total assignments and completion counts
+    const [[{ totalAssignments }]] = await pool.query('SELECT COUNT(*) AS totalAssignments FROM assignments WHERE period_id = ?', [periodId]);
+    const [[{ completedAssignments }]] = await pool.query("SELECT COUNT(*) AS completedAssignments FROM assignments WHERE period_id = ? AND status = 'EVALUATED'", [periodId]);
+
+    // Average score calculation
+    const [[{ avgScore }]] = await pool.query(`
+      SELECT COALESCE(AVG(es.total_score), 0) AS avgScore
+      FROM evaluation_summaries es
+      JOIN assignments a ON es.assignment_id = a.id
+      WHERE a.period_id = ?
+    `, [periodId]);
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Statistics calculated successfully.',
+      data: {
+        totalTeachers,
+        totalJudges,
+        totalAssignments,
+        completedAssignments,
+        averageScore: parseFloat(avgScore).toFixed(2)
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+module.exports = {
+  getPeriod,
+  updatePeriod,
+  getMetrics,
+  createMetric,
+  deleteMetric,
+  getAssignments,
+  createAssignment,
+  getStatistics
+};
+
