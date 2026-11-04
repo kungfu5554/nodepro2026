@@ -171,6 +171,41 @@ async function initializeDatabase(maxRetries = 10, delayMs = 3000) {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
       `);
 
+      // 2.1 Departments table
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS departments (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          name VARCHAR(150) NOT NULL UNIQUE,
+          code VARCHAR(50) DEFAULT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+
+      // 2.2 Department judges table (Judges assigned to departments)
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS department_judges (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          department_name VARCHAR(150) NOT NULL,
+          judge_citizen_id VARCHAR(50) NOT NULL,
+          period_id INT NOT NULL DEFAULT 1,
+          role_in_board VARCHAR(50) NOT NULL DEFAULT 'กรรมการ',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE KEY uq_dept_judge (department_name, judge_citizen_id, period_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+
+      // 2.3 Teacher submissions tracking table
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS teacher_submissions (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          period_id INT NOT NULL,
+          teacher_citizen_id VARCHAR(50) NOT NULL,
+          status ENUM('DRAFT', 'SUBMITTED') NOT NULL DEFAULT 'SUBMITTED',
+          submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          UNIQUE KEY uq_teacher_submission (period_id, teacher_citizen_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+
       // 3. Seed initial evaluation periods
       await pool.query(`
         INSERT INTO evaluation_periods (id, name, start_date, end_date, is_open)
@@ -247,6 +282,16 @@ async function initializeDatabase(maxRetries = 10, delayMs = 3000) {
           role_title: 'ผู้รับการประเมิน',
           department: 'แผนกวิชาคอมพิวเตอร์ธุรกิจ',
           position: 'ครูผู้ช่วย'
+        },
+        {
+          citizen_id: '1100500000005',
+          password: 'judge1234',
+          prefix: 'ผศ.ดร.',
+          name: 'ผศ.ดร.วิชัย พิริยะกุล',
+          role: 'judge',
+          role_title: 'กรรมการผู้ประเมิน',
+          department: 'แผนกวิชาเทคโนโลยีสารสนเทศ',
+          position: 'กรรมการผู้ทรงคุณวุฒิ'
         }
       ];
 
@@ -270,12 +315,43 @@ async function initializeDatabase(maxRetries = 10, delayMs = 3000) {
         }
       }
 
-      // 6. Seed initial assignments (Multiple evaluatees for presentation demo)
+      // 6. Seed initial departments
+      await pool.query(`
+        INSERT INTO departments (name, code)
+        VALUES 
+          ('แผนกวิชาเทคโนโลยีสารสนเทศ', 'IT'),
+          ('แผนกวิชาคอมพิวเตอร์ธุรกิจ', 'BC'),
+          ('แผนกวิชาการบัญชี', 'ACC'),
+          ('แผนกวิชาช่างยนต์', 'AUTO'),
+          ('แผนกวิชาการจัดการโลจิสติกส์', 'LOG')
+        ON DUPLICATE KEY UPDATE code = VALUES(code);
+      `);
+
+      // 7. Seed department judges (Judges assigned by department)
+      await pool.query(`
+        INSERT INTO department_judges (department_name, judge_citizen_id, period_id, role_in_board)
+        VALUES 
+          ('แผนกวิชาเทคโนโลยีสารสนเทศ', '1100300000003', 1, 'ประธานกรรมการ'),
+          ('แผนกวิชาเทคโนโลยีสารสนเทศ', '1100500000005', 1, 'กรรมการผู้ทรงคุณวุฒิ'),
+          ('แผนกวิชาคอมพิวเตอร์ธุรกิจ', '1100300000003', 1, 'ประธานกรรมการ')
+        ON DUPLICATE KEY UPDATE role_in_board = VALUES(role_in_board);
+      `);
+
+      // 8. Seed teacher submissions
+      await pool.query(`
+        INSERT INTO teacher_submissions (period_id, teacher_citizen_id, status)
+        VALUES 
+          (1, '1100400000004', 'SUBMITTED'),
+          (1, '1100200000002', 'SUBMITTED')
+        ON DUPLICATE KEY UPDATE status = VALUES(status);
+      `);
+
+      // 9. Seed initial assignments (Multiple evaluatees for presentation demo)
       await pool.query(`
         INSERT INTO assignments (id, period_id, teacher_citizen_id, judge_citizen_id, role_in_board, status)
         VALUES 
           (1, 1, '1100200000002', '1100300000003', 'ประธานกรรมการ', 'PENDING'),
-          (2, 1, '1100400000004', '1100300000003', 'กรรมการและเลขานุการ', 'SUBMITTED')
+          (2, 1, '1100400000004', '1100300000003', 'ประธานกรรมการ', 'SUBMITTED')
         ON DUPLICATE KEY UPDATE role_in_board = VALUES(role_in_board);
       `);
 

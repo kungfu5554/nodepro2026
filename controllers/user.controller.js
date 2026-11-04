@@ -42,7 +42,8 @@ async function getUsers(req, res, next) {
     res.status(200).json({
       status: 'success',
       message: 'Users retrieved successfully.',
-      data: users
+      data: users,
+      users: users
     });
   } catch (error) {
     next(error);

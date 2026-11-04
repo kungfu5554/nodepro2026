@@ -25,4 +25,14 @@ router.delete('/assignments/:id', requireRole('admin', 'hr'), hrController.delet
 // Overview statistics
 router.get('/statistics', requireRole('admin', 'hr'), hrController.getStatistics);
 
+// Department management
+router.get('/departments', hrController.getDepartments);
+router.post('/departments', requireRole('admin', 'hr'), hrController.createDepartment);
+router.delete('/departments/:id', requireRole('admin', 'hr'), hrController.deleteDepartment);
+
+// Department Judges management
+router.get('/department-judges', hrController.getDepartmentJudges);
+router.post('/department-judges', requireRole('admin', 'hr'), hrController.assignDepartmentJudge);
+router.delete('/department-judges/:id', requireRole('admin', 'hr'), hrController.removeDepartmentJudge);
+
 module.exports = router;

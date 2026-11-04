@@ -113,6 +113,35 @@ CREATE TABLE IF NOT EXISTS evaluation_summaries (
   FOREIGN KEY (assignment_id) REFERENCES assignments(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- 8. Departments table
+CREATE TABLE IF NOT EXISTS departments (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(150) NOT NULL UNIQUE,
+  code VARCHAR(50) DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 9. Department judges table (Judges assigned by department)
+CREATE TABLE IF NOT EXISTS department_judges (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  department_name VARCHAR(150) NOT NULL,
+  judge_citizen_id VARCHAR(50) NOT NULL,
+  period_id INT NOT NULL DEFAULT 1,
+  role_in_board VARCHAR(50) NOT NULL DEFAULT 'กรรมการ',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_dept_judge (department_name, judge_citizen_id, period_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 10. Teacher submissions tracking table
+CREATE TABLE IF NOT EXISTS teacher_submissions (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  period_id INT NOT NULL,
+  teacher_citizen_id VARCHAR(50) NOT NULL,
+  status ENUM('DRAFT', 'SUBMITTED') NOT NULL DEFAULT 'SUBMITTED',
+  submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_teacher_submission (period_id, teacher_citizen_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- ============================================================================
 -- Initial Seed Data
 -- ============================================================================
@@ -136,7 +165,30 @@ VALUES
   ('1100100000001', '$2b$10$WmKTBymFYoFBP8AnYdGbvuE7UN2CYcu.P./bC6ZhimwFqxqxPStIu', 'นางสาว', 'นางสาวดวงใจ รัตนพร', 'hr', 'ฝ่ายบุคลากร (HR)', 'งานบุคลากร', 'เจ้าหน้าที่งานบุคลากร'),
   ('1100200000002', '$2b$10$srzUkRFMAOF07d..EiyKLeGgv1SzQYiqoUzhnKGUfDAvOy7xq.o6e', 'นาย', 'นายสมชาย ใจดี', 'teacher', 'ผู้รับการประเมิน', 'แผนกวิชาเทคโนโลยีสารสนเทศ', 'ครู คศ.1'),
   ('1100300000003', '$2b$10$jemNnhZdlIxhounDk5pddeNMllnIpVhrLUJqSag5CEug01Z8T9BFi', 'ดร.', 'ดร.สมศักดิ์ ทรงธรรม', 'judge', 'กรรมการผู้ประเมิน', 'คณะกรรมการประเมินภายนอก', 'ประธานกรรมการประเมิน'),
-  ('1100400000004', '$2b$10$srzUkRFMAOF07d..EiyKLeGgv1SzQYiqoUzhnKGUfDAvOy7xq.o6e', 'นางสาว', 'นางสาวกานดา วงศ์สุวรรณ', 'teacher', 'ผู้รับการประเมิน', 'แผนกวิชาคอมพิวเตอร์ธุรกิจ', 'ครูผู้ช่วย');
+  ('1100400000004', '$2b$10$srzUkRFMAOF07d..EiyKLeGgv1SzQYiqoUzhnKGUfDAvOy7xq.o6e', 'นางสาว', 'นางสาวกานดา วงศ์สุวรรณ', 'teacher', 'ผู้รับการประเมิน', 'แผนกวิชาคอมพิวเตอร์ธุรกิจ', 'ครูผู้ช่วย'),
+  ('1100500000005', '$2b$10$jemNnhZdlIxhounDk5pddeNMllnIpVhrLUJqSag5CEug01Z8T9BFi', 'ผศ.ดร.', 'ผศ.ดร.วิชัย พิริยะกุล', 'judge', 'กรรมการผู้ประเมิน', 'แผนกวิชาเทคโนโลยีสารสนเทศ', 'กรรมการผู้ทรงคุณวุฒิ');
+
+-- Seed initial departments
+INSERT IGNORE INTO departments (name, code)
+VALUES 
+  ('แผนกวิชาเทคโนโลยีสารสนเทศ', 'IT'),
+  ('แผนกวิชาคอมพิวเตอร์ธุรกิจ', 'BC'),
+  ('แผนกวิชาการบัญชี', 'ACC'),
+  ('แผนกวิชาช่างยนต์', 'AUTO'),
+  ('แผนกวิชาการจัดการโลจิสติกส์', 'LOG');
+
+-- Seed department judges
+INSERT IGNORE INTO department_judges (department_name, judge_citizen_id, period_id, role_in_board)
+VALUES 
+  ('แผนกวิชาเทคโนโลยีสารสนเทศ', '1100300000003', 1, 'ประธานกรรมการ'),
+  ('แผนกวิชาเทคโนโลยีสารสนเทศ', '1100500000005', 1, 'กรรมการผู้ทรงคุณวุฒิ'),
+  ('แผนกวิชาคอมพิวเตอร์ธุรกิจ', '1100300000003', 1, 'ประธานกรรมการ');
+
+-- Seed teacher submissions
+INSERT IGNORE INTO teacher_submissions (period_id, teacher_citizen_id, status)
+VALUES 
+  (1, '1100400000004', 'SUBMITTED'),
+  (1, '1100200000002', 'SUBMITTED');
 
 -- Seed initial assignments
 INSERT IGNORE INTO assignments (id, period_id, teacher_citizen_id, judge_citizen_id, role_in_board, status)

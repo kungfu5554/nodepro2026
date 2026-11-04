@@ -8,6 +8,7 @@ router.use(authenticateToken);
 
 // Judge routes
 router.get('/assigned', requireRole('judge'), judgeController.getAssignedEvaluatees);
+router.post('/init-assignment', requireRole('judge'), judgeController.initCandidateAssignment);
 router.get('/grading/:assignmentId', requireRole('judge'), judgeController.getCandidateDetailsForGrading);
 router.post('/submit/:assignmentId', requireRole('judge'), judgeController.submitEvaluation);
 

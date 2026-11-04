@@ -1,11 +1,11 @@
 // controllers/evaluatee.controller.js
 const { pool } = require('../config/database');
 
-// Retrieve candidate metrics, current self scores, and progress (Criteria 5.2.3 - 5.2.6)
+// Retrieve candidate metrics, current self scores, submission status, and multi-judge reviews (Criteria 5.2.3 - 5.2.6)
 async function getMyEvaluationSheet(req, res, next) {
   try {
     const teacherCitizenId = req.user.citizenId;
-    const periodId = req.query.periodId || 1;
+    const periodId = parseInt(req.query.periodId || 1, 10);
 
     // 1. Get active period
     const [periods] = await pool.query('SELECT * FROM evaluation_periods WHERE id = ?', [periodId]);
@@ -26,41 +26,89 @@ async function getMyEvaluationSheet(req, res, next) {
       WHERE period_id = ? AND teacher_citizen_id = ?
     `, [periodId, teacherCitizenId]);
 
-    // 4. Calculate progress percentage
+    // 4. Get teacher submission status
+    const [submissions] = await pool.query(`
+      SELECT status, submitted_at AS submittedAt
+      FROM teacher_submissions
+      WHERE period_id = ? AND teacher_citizen_id = ?
+    `, [periodId, teacherCitizenId]);
+
+    const submissionStatus = submissions.length > 0 ? submissions[0].status : (selfScores.length > 0 ? 'SUBMITTED' : 'DRAFT');
+    const submittedAt = submissions.length > 0 ? submissions[0].submittedAt : null;
+
+    // 5. Calculate progress percentage
     const totalMetrics = metrics.length;
     const completedCount = selfScores.length;
     const progress = totalMetrics > 0 ? Math.round((completedCount / totalMetrics) * 100) : 0;
 
-    // 5. Get judge feedback and metric scores if available
-    const [summaries] = await pool.query(`
+    // 6. Get all judge evaluations for this candidate in this period
+    const [judgeRows] = await pool.query(`
       SELECT 
         a.id AS assignmentId,
-        es.total_score AS totalScore, 
-        es.overall_feedback AS overallFeedback, 
+        a.judge_citizen_id AS judgeCitizenId,
         u_j.name AS judgeName, 
         u_j.position AS judgePosition,
-        a.role_in_board AS roleInBoard,
+        COALESCE(a.role_in_board, 'กรรมการผู้ประเมิน') AS roleInBoard,
         a.status AS assignmentStatus,
+        es.total_score AS totalScore, 
+        es.overall_feedback AS overallFeedback, 
         es.judge_signature AS judgeSignature,
         es.submitted_at AS submittedAt
       FROM assignments a
       JOIN users u_j ON a.judge_citizen_id = u_j.citizen_id
-      LEFT JOIN evaluation_summaries es ON a.id = es.assignment_id
-      WHERE a.period_id = ? AND a.teacher_citizen_id = ?
-      ORDER BY a.id DESC
-      LIMIT 1
+      JOIN evaluation_summaries es ON a.id = es.assignment_id
+      WHERE a.period_id = ? AND a.teacher_citizen_id = ? AND a.status = 'EVALUATED'
+      ORDER BY a.id ASC
     `, [periodId, teacherCitizenId]);
 
-    // Get individual judge scores per metric
-    let judgeMetricScores = [];
-    if (summaries.length > 0 && summaries[0].assignmentId) {
+    // 7. For each judge, retrieve their metric-level scores
+    const judgeEvaluations = [];
+    const metricTotals = {};
+    const metricJudgeCounts = {};
+    let sumTotalScores = 0;
+
+    for (const j of judgeRows) {
       const [scores] = await pool.query(`
         SELECT metric_id AS metricId, judge_score AS judgeScore
         FROM judge_evaluations
         WHERE assignment_id = ?
-      `, [summaries[0].assignmentId]);
-      judgeMetricScores = scores;
+      `, [j.assignmentId]);
+
+      const metricScoreMap = {};
+      scores.forEach(s => {
+        const val = parseFloat(s.judgeScore) || 0;
+        metricScoreMap[s.metricId] = val;
+        metricTotals[s.metricId] = (metricTotals[s.metricId] || 0) + val;
+        metricJudgeCounts[s.metricId] = (metricJudgeCounts[s.metricId] || 0) + 1;
+      });
+
+      const numTotal = parseFloat(j.totalScore) || 0;
+      sumTotalScores += numTotal;
+
+      judgeEvaluations.push({
+        assignmentId: j.assignmentId,
+        judgeCitizenId: j.judgeCitizenId,
+        judgeName: j.judgeName,
+        judgePosition: j.judgePosition,
+        roleInBoard: j.roleInBoard,
+        totalScore: numTotal.toFixed(2),
+        overallFeedback: j.overallFeedback,
+        judgeSignature: j.judgeSignature,
+        submittedAt: j.submittedAt,
+        metricScores: metricScoreMap
+      });
     }
+
+    // Consolidated metrics averages
+    const metricAverages = {};
+    metrics.forEach(m => {
+      const count = metricJudgeCounts[m.id] || 0;
+      metricAverages[m.id] = count > 0 ? (metricTotals[m.id] / count).toFixed(2) : null;
+    });
+
+    const averageTotalScore = judgeEvaluations.length > 0 
+      ? (sumTotalScores / judgeEvaluations.length).toFixed(2) 
+      : null;
 
     res.status(200).json({
       status: 'success',
@@ -69,9 +117,16 @@ async function getMyEvaluationSheet(req, res, next) {
         period,
         metrics,
         selfScores,
+        submissionStatus,
+        submittedAt,
         progress,
-        judgeFeedback: summaries.length > 0 ? summaries[0] : null,
-        judgeMetricScores
+        judgeFeedback: judgeEvaluations.length > 0 ? judgeEvaluations[0] : null,
+        judgeEvaluations,
+        consolidatedSummary: {
+          averageTotalScore,
+          judgeCount: judgeEvaluations.length,
+          metricAverages
+        }
       }
     });
   } catch (error) {
@@ -120,6 +175,15 @@ async function saveSelfEvaluations(req, res, next) {
       `, [periodId, teacherCitizenId, metricId, String(selfScore), finalComment, evidenceUrl || null, evidenceOriginalName || null]);
     }
 
+    // Record submission state in teacher_submissions
+    await pool.query(`
+      INSERT INTO teacher_submissions (period_id, teacher_citizen_id, status, submitted_at)
+      VALUES (?, ?, 'SUBMITTED', CURRENT_TIMESTAMP)
+      ON DUPLICATE KEY UPDATE
+        status = 'SUBMITTED',
+        submitted_at = CURRENT_TIMESTAMP
+    `, [periodId, teacherCitizenId]);
+
     // Update assignment status to SUBMITTED if currently PENDING
     await pool.query(`
       UPDATE assignments
@@ -130,7 +194,10 @@ async function saveSelfEvaluations(req, res, next) {
     res.status(200).json({
       status: 'success',
       message: 'Self evaluation saved successfully.',
-      data: null
+      data: {
+        submissionStatus: 'SUBMITTED',
+        submittedAt: new Date().toISOString()
+      }
     });
   } catch (error) {
     next(error);

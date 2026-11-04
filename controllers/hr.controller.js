@@ -380,6 +380,164 @@ async function getStatistics(req, res, next) {
   }
 }
 
+// ============================================================================
+// 5. Department Management
+// ============================================================================
+
+// Get all departments
+async function getDepartments(req, res, next) {
+  try {
+    const [rows] = await pool.query(`
+      SELECT 
+        d.id,
+        d.name,
+        d.code,
+        (SELECT COUNT(*) FROM users u WHERE u.role = 'teacher' AND u.department = d.name) AS teacherCount,
+        (SELECT COUNT(DISTINCT dj.judge_citizen_id) FROM department_judges dj WHERE dj.department_name = d.name) AS judgeCount,
+        d.created_at AS createdAt
+      FROM departments d
+      ORDER BY d.id ASC
+    `);
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Departments retrieved successfully.',
+      data: rows
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// Create department
+async function createDepartment(req, res, next) {
+  try {
+    const { name, code } = req.body;
+    if (!name || name.trim() === '') {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Department name is required.',
+        data: null
+      });
+    }
+
+    const [existing] = await pool.query('SELECT id FROM departments WHERE name = ?', [name.trim()]);
+    if (existing.length > 0) {
+      return res.status(409).json({
+        status: 'error',
+        message: 'Department name already exists.',
+        data: null
+      });
+    }
+
+    const [result] = await pool.query(
+      'INSERT INTO departments (name, code) VALUES (?, ?)',
+      [name.trim(), code ? code.trim() : null]
+    );
+
+    res.status(201).json({
+      status: 'success',
+      message: 'Department created successfully.',
+      data: { id: result.insertId, name: name.trim(), code: code ? code.trim() : null }
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// Delete department
+async function deleteDepartment(req, res, next) {
+  try {
+    const { id } = req.params;
+    await pool.query('DELETE FROM departments WHERE id = ?', [id]);
+    res.status(200).json({
+      status: 'success',
+      message: 'Department deleted successfully.',
+      data: null
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// ============================================================================
+// 6. Department Judges Management (Assign judges to departments)
+// ============================================================================
+
+// Get judges assigned to departments
+async function getDepartmentJudges(req, res, next) {
+  try {
+    const periodId = req.query.periodId || 1;
+    const [rows] = await pool.query(`
+      SELECT 
+        dj.id,
+        dj.department_name AS departmentName,
+        dj.judge_citizen_id AS judgeCitizenId,
+        u.name AS judgeName,
+        u.position AS judgePosition,
+        dj.role_in_board AS roleInBoard,
+        dj.period_id AS periodId,
+        dj.created_at AS createdAt
+      FROM department_judges dj
+      JOIN users u ON dj.judge_citizen_id = u.citizen_id
+      WHERE dj.period_id = ?
+      ORDER BY dj.department_name ASC, dj.id ASC
+    `, [periodId]);
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Department judges retrieved successfully.',
+      data: rows
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// Assign judge to department
+async function assignDepartmentJudge(req, res, next) {
+  try {
+    const { departmentName, judgeCitizenId, roleInBoard, periodId = 1 } = req.body;
+
+    if (!departmentName || !judgeCitizenId) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Department name and judge citizen ID are required.',
+        data: null
+      });
+    }
+
+    const [result] = await pool.query(`
+      INSERT INTO department_judges (department_name, judge_citizen_id, role_in_board, period_id)
+      VALUES (?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE role_in_board = VALUES(role_in_board)
+    `, [departmentName, judgeCitizenId, roleInBoard || 'กรรมการ', periodId]);
+
+    res.status(201).json({
+      status: 'success',
+      message: 'Judge assigned to department successfully.',
+      data: { id: result.insertId }
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// Remove judge from department
+async function removeDepartmentJudge(req, res, next) {
+  try {
+    const { id } = req.params;
+    await pool.query('DELETE FROM department_judges WHERE id = ?', [id]);
+    res.status(200).json({
+      status: 'success',
+      message: 'Judge removed from department successfully.',
+      data: null
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   getPeriod,
   getAllPeriods,
@@ -391,5 +549,11 @@ module.exports = {
   getAssignments,
   createAssignment,
   deleteAssignment,
-  getStatistics
+  getStatistics,
+  getDepartments,
+  createDepartment,
+  deleteDepartment,
+  getDepartmentJudges,
+  assignDepartmentJudge,
+  removeDepartmentJudge
 };
