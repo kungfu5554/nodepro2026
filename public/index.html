@@ -631,49 +631,54 @@
     @media print {
       @page {
         size: A4 portrait;
-        margin: 15mm 15mm 15mm 15mm;
+        margin: 14mm 15mm 14mm 15mm;
       }
       html, body {
         background: #ffffff !important;
         color: #000000 !important;
-        font-family: 'Sarabun', 'TH Sarabun New', -apple-system, BlinkMacSystemFont, sans-serif !important;
+        font-family: 'Sarabun', 'TH Sarabun New', 'Garuda', 'Noto Sans Thai', -apple-system, BlinkMacSystemFont, sans-serif !important;
         font-size: 12pt !important;
-        line-height: 1.35 !important;
+        line-height: 1.4 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 100% !important;
+        height: auto !important;
+        overflow: visible !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
       }
-      /* Hide all on-screen app elements */
-      #app > div:not(#print-document) {
+      /* Hide entire Vue SPA (including modals/overlays) completely when printing */
+      body > #app {
         display: none !important;
       }
-      .navbar, .sub-nav, .pres-box, .btn-primary, .btn-sm, .btn-key, .btn-del, .btn-success,
-      .btn-outline, .btn-logout, .btn-profile, .modal-footer, .modal-header button, input, select, textarea,
-      button, .alert, .stat-grid, .candidate-grid, .page-header, .period-bar, .modal-overlay {
-        display: none !important;
-      }
-
-      /* Display dedicated printable document only */
-      #print-document {
+      /* Show ONLY the dedicated isolated A4 official document */
+      body > #print-document {
         display: block !important;
+        position: static !important;
         width: 100% !important;
         margin: 0 !important;
         padding: 0 !important;
         background: #ffffff !important;
         color: #000000 !important;
+        visibility: visible !important;
       }
       .print-doc-header {
         text-align: center;
-        margin-bottom: 18px;
+        margin-bottom: 16px;
         border-bottom: 2px solid #000000;
         padding-bottom: 10px;
       }
       .print-doc-header h1 {
-        font-size: 15pt !important;
+        font-size: 14.5pt !important;
         font-weight: bold !important;
         margin-bottom: 3pt !important;
+        color: #000000 !important;
       }
       .print-doc-header h2 {
-        font-size: 13pt !important;
+        font-size: 12.5pt !important;
         font-weight: bold !important;
         margin-bottom: 2pt !important;
+        color: #000000 !important;
       }
       .print-meta-table {
         width: 100% !important;
@@ -684,6 +689,7 @@
         padding: 4px 6px !important;
         font-size: 11pt !important;
         border: none !important;
+        color: #000000 !important;
       }
       .print-table {
         width: 100% !important;
@@ -695,6 +701,7 @@
         padding: 6px 8px !important;
         font-size: 10.5pt !important;
         color: #000000 !important;
+        vertical-align: top !important;
       }
       .print-table th {
         background-color: #f2f2f2 !important;
@@ -703,21 +710,24 @@
       }
       .print-feedback-box {
         border: 1px solid #000000 !important;
-        padding: 10px !important;
+        padding: 10px 12px !important;
         margin-bottom: 18px !important;
         font-size: 11pt !important;
+        color: #000000 !important;
+        page-break-inside: avoid !important;
       }
       .print-signatures {
         display: flex !important;
         justify-content: space-between !important;
-        margin-top: 30px !important;
+        margin-top: 28px !important;
         page-break-inside: avoid !important;
       }
       .print-sign-box {
         width: 45% !important;
         text-align: center !important;
         font-size: 11pt !important;
-        line-height: 1.6 !important;
+        line-height: 1.65 !important;
+        color: #000000 !important;
       }
     }
   </style>
@@ -2498,8 +2508,12 @@
         </div>
 
         <div class="modal-footer">
-          <button @click="showReportModal = false" class="btn-outline">ปิดหน้าต่าง</button>
-          <button @click="triggerPrintFromModal" class="btn-primary">
+          <button type="button" @click="showReportModal = false" class="btn-outline">ปิดหน้าต่าง</button>
+          <button type="button" @click="triggerPrintInPageFromModal" class="btn-outline" title="สั่งพิมพ์ผ่านหน้าปัจจุบันทันที">
+            <v-icon name="printer" size="14"></v-icon>
+            <span>สั่งพิมพ์ด่วน</span>
+          </button>
+          <button type="button" @click="triggerPrintFromModal" class="btn-primary">
             <v-icon name="printer" size="14"></v-icon>
             <span>พิมพ์เอกสารราชการ (PDF)</span>
           </button>
@@ -2577,254 +2591,12 @@
       </div>
     </div>
 
-    <!-- ============================================================== -->
-    <!-- 4. DEDICATED PRINTABLE DOCUMENT (DISPLAYS ON A4 PRINT ONLY) -->
-    <!-- ============================================================== -->
-    <div id="print-document">
-      
-      <!-- 4.1 INDIVIDUAL EVALUATION DOCUMENT -->
-      <div v-if="printMode === 'individual' && printCandidateData" class="print-doc-wrap">
-        <div class="print-doc-header">
-          <h1>แบบสรุปรายงานผลการประเมินผลการปฏิบัติงานของข้าราชการครูและบุคลากรทางการศึกษา</h1>
-          <h2>(สายงานการสอน และสนับสนุนการจัดการเรียนรู้)</h2>
-          <div style="font-size: 11pt; margin-top: 4pt;">รอบการประเมิน: {{ printCandidateData.periodName || period.name }}</div>
-        </div>
-
-        <table class="print-meta-table">
-          <tr>
-            <td width="55%"><strong>ชื่อผู้รับการประเมิน:</strong> {{ printCandidateData.teacherName }}</td>
-            <td width="45%"><strong>ตำแหน่ง:</strong> {{ printCandidateData.position || 'ครู' }}</td>
-          </tr>
-          <tr>
-            <td><strong>สังกัด / แผนกวิชา:</strong> {{ printCandidateData.department || printCandidateData.teacherDepartment || '-' }}</td>
-            <td><strong>เลขประจำตัวประชาชน:</strong> {{ printCandidateData.teacherCitizenId || '-' }}</td>
-          </tr>
-          <tr>
-            <td><strong>กรรมการผู้ประเมิน:</strong> {{ printCandidateData.judgeName || (currentUser ? currentUser.name : '-') }}</td>
-            <td><strong>บทบาทในคณะกรรมการ:</strong> {{ printCandidateData.roleInBoard || 'กรรมการผู้ประเมิน' }}</td>
-          </tr>
-        </table>
-
-        <table class="print-table">
-          <thead>
-            <tr>
-              <th width="5%">ลำดับ</th>
-              <th width="35%">ตัวชี้วัดการประเมิน</th>
-              <th width="10%">น้ำหนัก (%)</th>
-              <th width="25%">ความคิดเห็นของผู้รับการประเมิน</th>
-              <th width="12%">คะแนนตนเอง</th>
-              <th width="13%">คะแนนกรรมการ</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="(m, idx) in (printCandidateData.metricsRows || [])" :key="m.id">
-              <td style="text-align:center;">{{ idx + 1 }}</td>
-              <td>
-                <strong>{{ m.title }}</strong>
-                <div v-if="m.description" style="font-size:9.5pt; color:#333;">{{ m.description }}</div>
-              </td>
-              <td style="text-align:center;">{{ m.weight }}%</td>
-              <td style="font-size:10pt;">{{ m.teacherComment || '-' }}</td>
-              <td style="text-align:center;">{{ m.selfScoreDisplay || '-' }}</td>
-              <td style="text-align:center; font-weight:bold;">{{ m.judgeScoreDisplay || '-' }}</td>
-            </tr>
-          </tbody>
-          <tfoot>
-            <tr style="background:#f9f9f9; font-weight:bold;">
-              <td colspan="2" style="text-align:right;">ผลรวมคะแนนสุทธิ / ระดับการประเมิน:</td>
-              <td style="text-align:center;">{{ printCandidateData.totalWeight || totalMetricWeight }}%</td>
-              <td colspan="2" style="text-align:center; font-size:11pt;">
-                คะแนนรวม: {{ printCandidateData.totalScore && printCandidateData.totalScore !== '-' ? printCandidateData.totalScore + ' / 4.00' : '- / 4.00' }}
-              </td>
-              <td style="text-align:center; font-size:11pt;">
-                {{ getPerformanceGrade(printCandidateData.totalScore).grade }}
-              </td>
-            </tr>
-          </tfoot>
-        </table>
-
-        <div class="print-feedback-box">
-          <strong>ข้อคิดเห็นและข้อเสนอแนะในการพัฒนาของคณะกรรมการผู้ประเมิน:</strong>
-          <p style="margin-top:4pt;">{{ printCandidateData.overallFeedback || 'ผลการปฏิบัติงานเป็นไปตามเกณฑ์มาตรฐานที่สถานศึกษากำหนด มีความมุ่งมั่นในการจัดการเรียนรู้และพัฒนาผู้เรียนอย่างต่อเนื่อง' }}</p>
-        </div>
-
-        <div class="print-signatures">
-          <div class="print-sign-box">
-            <div>(ลงชื่อ)....................................................................</div>
-            <div style="margin-top:4pt;">( {{ printCandidateData.teacherName }} )</div>
-            <div>ผู้รับการประเมิน</div>
-            <div>วันที่ {{ new Date().getDate() }} / {{ new Date().getMonth() + 1 }} / {{ new Date().getFullYear() + 543 }}</div>
-          </div>
-          <div class="print-sign-box">
-            <div>(ลงชื่อ)....................................................................</div>
-            <div style="margin-top:4pt;">( {{ printCandidateData.judgeName || (currentUser ? currentUser.name : '-') }} )</div>
-            <div>กรรมการผู้ประเมิน</div>
-            <div>วันที่ {{ new Date().getDate() }} / {{ new Date().getMonth() + 1 }} / {{ new Date().getFullYear() + 543 }}</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 4.2 CONSOLIDATED EVALUATION DOCUMENT FOR TEACHER (ALL JUDGES COMBINED) -->
-      <div v-else-if="printMode === 'consolidated' && printCandidateData" class="print-doc-wrap">
-        <div class="print-doc-header">
-          <h1>แบบสรุปผลการประเมินผลการปฏิบัติงานของข้าราชการครูและบุคลากรทางการศึกษา</h1>
-          <h2>(รายงานภาพรวมผลการประเมินจากคณะกรรมการประจำสาขาวิชา)</h2>
-          <div style="font-size: 11pt; margin-top: 4pt;">รอบการประเมิน: {{ printCandidateData.periodName || period.name }}</div>
-        </div>
-
-        <table class="print-meta-table">
-          <tr>
-            <td width="55%"><strong>ชื่อผู้รับการประเมิน:</strong> {{ printCandidateData.teacherName }}</td>
-            <td width="45%"><strong>ตำแหน่ง:</strong> {{ printCandidateData.position || 'ครู' }}</td>
-          </tr>
-          <tr>
-            <td><strong>สังกัด / แผนกวิชา:</strong> {{ printCandidateData.department || '-' }}</td>
-            <td><strong>เลขประจำตัวประชาชน:</strong> {{ printCandidateData.teacherCitizenId || '-' }}</td>
-          </tr>
-          <tr>
-            <td><strong>สถานะการประเมิน:</strong> ประเมินเสร็จสิ้นสมบูรณ์</td>
-            <td><strong>จำนวนกรรมการที่ร่วมประเมิน:</strong> {{ teacherJudgeEvaluations.length }} ท่าน</td>
-          </tr>
-        </table>
-
-        <table class="print-table">
-          <thead>
-            <tr>
-              <th width="5%">ลำดับ</th>
-              <th width="40%">ตัวชี้วัดการประเมิน</th>
-              <th width="12%">น้ำหนัก (%)</th>
-              <th width="23%">ความคิดเห็นของผู้รับการประเมิน</th>
-              <th width="10%">คะแนนตนเอง</th>
-              <th width="10%">คะแนนเฉลี่ย</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="(m, idx) in (printCandidateData.metricsRows || [])" :key="m.id">
-              <td style="text-align:center;">{{ idx + 1 }}</td>
-              <td>
-                <strong>{{ m.title }}</strong>
-                <div v-if="m.description" style="font-size:9.5pt; color:#333;">{{ m.description }}</div>
-              </td>
-              <td style="text-align:center;">{{ m.weight }}%</td>
-              <td style="font-size:10pt;">{{ m.teacherComment || '-' }}</td>
-              <td style="text-align:center;">{{ m.selfScoreDisplay || '-' }}</td>
-              <td style="text-align:center; font-weight:bold;">{{ m.avgScoreDisplay || '-' }}</td>
-            </tr>
-          </tbody>
-          <tfoot>
-            <tr style="background:#f9f9f9; font-weight:bold;">
-              <td colspan="2" style="text-align:right;">คะแนนประเมินเฉลี่ยสุทธิ / ระดับการประเมิน:</td>
-              <td style="text-align:center;">{{ printCandidateData.totalWeight || totalMetricWeight }}%</td>
-              <td colspan="2" style="text-align:center; font-size:11pt;">
-                คะแนนเฉลี่ยรวม: {{ teacherConsolidatedSummary ? teacherConsolidatedSummary.averageTotalScore + ' / 4.00' : '- / 4.00' }}
-              </td>
-              <td style="text-align:center; font-size:11pt;">
-                {{ getPerformanceGrade(teacherConsolidatedSummary ? teacherConsolidatedSummary.averageTotalScore : 0).grade }}
-              </td>
-            </tr>
-          </tfoot>
-        </table>
-
-        <!-- Summary of each committee member's feedback and scores -->
-        <div style="margin-top:14px;">
-          <strong style="font-size:11pt;">สรุปผลการประเมินและข้อเสนอแนะจากกรรมการผู้ประเมินแต่ละท่าน:</strong>
-          <table class="print-table" style="margin-top:6px;">
-            <thead>
-              <tr>
-                <th width="5%">ลำดับ</th>
-                <th width="25%">กรรมการผู้ประเมิน</th>
-                <th width="18%">บทบาทหน้าที่</th>
-                <th width="12%">คะแนนที่ให้</th>
-                <th>ข้อคิดเห็นและข้อเสนอแนะในการพัฒนา</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(j, idx) in teacherJudgeEvaluations" :key="j.assignmentId">
-                <td style="text-align:center;">{{ idx + 1 }}</td>
-                <td><strong>{{ j.judgeName }}</strong><br/><small style="font-size:9pt;">{{ j.judgePosition || 'กรรมการ' }}</small></td>
-                <td>{{ j.roleInBoard }}</td>
-                <td style="text-align:center; font-weight:bold;">{{ j.totalScore }} / 4.00</td>
-                <td style="font-size:9.5pt;">{{ j.overallFeedback || 'ผลการปฏิบัติงานเป็นไปตามเกณฑ์มาตรฐาน' }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <div class="print-signatures" style="margin-top:28px;">
-          <div class="print-sign-box">
-            <div>(ลงชื่อ)....................................................................</div>
-            <div style="margin-top:4pt;">( {{ printCandidateData.teacherName }} )</div>
-            <div>ผู้รับการประเมิน</div>
-            <div>วันที่ {{ new Date().getDate() }} / {{ new Date().getMonth() + 1 }} / {{ new Date().getFullYear() + 543 }}</div>
-          </div>
-          <div class="print-sign-box">
-            <div>(ลงชื่อ)....................................................................</div>
-            <div style="margin-top:4pt;">( {{ teacherJudgeEvaluations.length > 0 ? teacherJudgeEvaluations[0].judgeName : 'ประธานกรรมการ' }} )</div>
-            <div>ประธานคณะกรรมการผู้ประเมินประจำสาขาวิชา</div>
-            <div>วันที่ {{ new Date().getDate() }} / {{ new Date().getMonth() + 1 }} / {{ new Date().getFullYear() + 543 }}</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 4.2 OVERALL INSTITUTIONAL SUMMARY DOCUMENT -->
-      <div v-else-if="printMode === 'overall'" class="print-doc-wrap">
-        <div class="print-doc-header">
-          <h1>รายงานสรุปภาพรวมผลการประเมินผลการปฏิบัติงานบุคลากรทั้งสถานศึกษา</h1>
-          <h2>{{ period.name }}</h2>
-          <div style="font-size: 11pt; margin-top: 4pt;">พิมพ์รายงานข้อมูล ณ วันที่ {{ new Date().getDate() }} / {{ new Date().getMonth() + 1 }} / {{ new Date().getFullYear() + 543 }}</div>
-        </div>
-
-        <table class="print-meta-table" style="background:#f9f9f9; border:1px solid #000 !important; margin-bottom:14px;">
-          <tr>
-            <td width="25%"><strong>จำนวนบุคลากรทั้งหมด:</strong> {{ hrStats.totalTeachers || 0 }} คน</td>
-            <td width="25%"><strong>ประเมินเสร็จสิ้นแล้ว:</strong> {{ hrStats.completedAssignments || 0 }} รายการ</td>
-            <td width="25%"><strong>รอการประเมิน:</strong> {{ (hrStats.pendingAssignments || 0) + (hrStats.submittedAssignments || 0) }} รายการ</td>
-            <td width="25%"><strong>คะแนนเฉลี่ยรวม:</strong> {{ hrStats.averageScore || '0.00' }} / 4.00</td>
-          </tr>
-        </table>
-
-        <table class="print-table">
-          <thead>
-            <tr>
-              <th width="6%">ลำดับ</th>
-              <th width="28%">ชื่อ - นามสกุล ผู้รับการประเมิน</th>
-              <th width="24%">สังกัด / แผนกวิชา</th>
-              <th width="20%">กรรมการผู้ประเมิน</th>
-              <th width="11%">คะแนนรวม</th>
-              <th width="11%">ระดับผล</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="(a, idx) in assignments" :key="a.id">
-              <td style="text-align:center;">{{ idx + 1 }}</td>
-              <td><strong>{{ a.teacherName }}</strong></td>
-              <td>{{ a.teacherDepartment }}</td>
-              <td>{{ a.judgeName }}</td>
-              <td style="text-align:center; font-weight:bold;">{{ a.totalScore ? a.totalScore : '-' }}</td>
-              <td style="text-align:center;">{{ a.totalScore ? getPerformanceGrade(a.totalScore).grade : 'รอตรวจ' }}</td>
-            </tr>
-          </tbody>
-        </table>
-
-        <div class="print-signatures" style="margin-top:40px;">
-          <div class="print-sign-box">
-            <div>(ลงชื่อ)....................................................................</div>
-            <div style="margin-top:4pt;">( นางสาวดวงใจ รัตนพร )</div>
-            <div>เจ้าหน้าที่งานบุคลากร</div>
-            <div>วันที่ {{ new Date().getDate() }} / {{ new Date().getMonth() + 1 }} / {{ new Date().getFullYear() + 543 }}</div>
-          </div>
-          <div class="print-sign-box">
-            <div>(ลงชื่อ)....................................................................</div>
-            <div style="margin-top:4pt;">( นายพัฒนพงษ์ เทคโนแอดมิน )</div>
-            <div>ผู้อำนวยการสถานศึกษา / ประธาน อ.ก.ค.ศ.</div>
-            <div>วันที่ {{ new Date().getDate() }} / {{ new Date().getMonth() + 1 }} / {{ new Date().getFullYear() + 543 }}</div>
-          </div>
-        </div>
-      </div>
-
-    </div>
-
   </div>
+
+  <!-- ============================================================== -->
+  <!-- 4. ISOLATED PRINT CONTAINER (OUTSIDE #app FOR 0ms SYNC PRINT)  -->
+  <!-- ============================================================== -->
+  <div id="print-document"></div>
 
   <!-- Vue 3 Application Script -->
   <script>
@@ -3563,7 +3335,546 @@
           judgeViewMode.value = 'list';
         }
 
-        // Official PDF Report Builders & Print Triggers
+        // Official PDF Report Builders & Synchronous Print Engine
+        function escapeHtml(val) {
+          return String(val === null || val === undefined ? '' : val)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+        }
+
+        function getThaiPrintDateStr() {
+          const d = new Date();
+          return `${d.getDate()} / ${d.getMonth() + 1} / ${d.getFullYear() + 543}`;
+        }
+
+        function buildOfficialInnerHTML(mode, data) {
+          const dateStr = getThaiPrintDateStr();
+          const d = data || {};
+
+          if (mode === 'individual') {
+            const rows = Array.isArray(d.metricsRows) ? d.metricsRows : [];
+            const rowsHtml = rows.length > 0
+              ? rows.map((m, idx) => `
+                <tr>
+                  <td style="text-align:center;">${idx + 1}</td>
+                  <td>
+                    <strong>${escapeHtml(m.title || '-')}</strong>
+                    ${m.description ? `<div style="font-size:9.5pt; color:#333; margin-top:2pt;">${escapeHtml(m.description)}</div>` : ''}
+                  </td>
+                  <td style="text-align:center;">${escapeHtml(m.weight)}%</td>
+                  <td style="font-size:10pt; white-space:pre-line;">${escapeHtml(m.teacherComment || '-')}</td>
+                  <td style="text-align:center;">${escapeHtml(m.selfScoreDisplay || '-')}</td>
+                  <td style="text-align:center; font-weight:bold;">${escapeHtml(m.judgeScoreDisplay || '-')}</td>
+                </tr>
+              `).join('')
+              : `<tr><td colspan="6" style="text-align:center; padding:14pt;">ยังไม่มีรายการตัวชี้วัดในรอบการประเมินนี้</td></tr>`;
+
+            const totalScoreText = (d.totalScore && d.totalScore !== '-')
+              ? `${escapeHtml(d.totalScore)} / 4.00`
+              : '- / 4.00';
+            const gradeText = getPerformanceGrade(d.totalScore).grade;
+            const feedbackText = d.overallFeedback
+              ? escapeHtml(d.overallFeedback)
+              : 'ผลการปฏิบัติงานเป็นไปตามเกณฑ์มาตรฐานที่สถานศึกษากำหนด มีความมุ่งมั่นในการจัดการเรียนรู้และพัฒนาผู้เรียนอย่างต่อเนื่อง';
+            const judgeDisplay = d.judgeName || (currentUser.value ? currentUser.value.name : '-');
+
+            return `
+              <div class="print-doc-wrap">
+                <div class="print-doc-header">
+                  <h1>แบบสรุปรายงานผลการประเมินผลการปฏิบัติงานของข้าราชการครูและบุคลากรทางการศึกษา</h1>
+                  <h2>(สายงานการสอน และสนับสนุนการจัดการเรียนรู้)</h2>
+                  <div style="font-size: 11pt; margin-top: 4pt;">รอบการประเมิน: ${escapeHtml(d.periodName || period.value.name)}</div>
+                </div>
+
+                <table class="print-meta-table">
+                  <tr>
+                    <td width="55%"><strong>ชื่อผู้รับการประเมิน:</strong> ${escapeHtml(d.teacherName || '-')}</td>
+                    <td width="45%"><strong>ตำแหน่ง:</strong> ${escapeHtml(d.position || 'ครู')}</td>
+                  </tr>
+                  <tr>
+                    <td><strong>สังกัด / แผนกวิชา:</strong> ${escapeHtml(d.department || d.teacherDepartment || '-')}</td>
+                    <td><strong>เลขประจำตัวประชาชน:</strong> ${escapeHtml(d.teacherCitizenId || '-')}</td>
+                  </tr>
+                  <tr>
+                    <td><strong>กรรมการผู้ประเมิน:</strong> ${escapeHtml(judgeDisplay)}</td>
+                    <td><strong>บทบาทในคณะกรรมการ:</strong> ${escapeHtml(d.roleInBoard || 'กรรมการผู้ประเมิน')}</td>
+                  </tr>
+                </table>
+
+                <table class="print-table">
+                  <thead>
+                    <tr>
+                      <th width="6%">ลำดับ</th>
+                      <th width="34%">ตัวชี้วัดการประเมิน</th>
+                      <th width="10%">น้ำหนัก (%)</th>
+                      <th width="25%">ความคิดเห็นของผู้รับการประเมิน</th>
+                      <th width="12%">คะแนนตนเอง</th>
+                      <th width="13%">คะแนนกรรมการ</th>
+                    </tr>
+                  </thead>
+                  <tbody>${rowsHtml}</tbody>
+                  <tfoot>
+                    <tr style="background:#f9f9f9; font-weight:bold;">
+                      <td colspan="2" style="text-align:right;">ผลรวมคะแนนสุทธิ / ระดับการประเมิน:</td>
+                      <td style="text-align:center;">${escapeHtml(d.totalWeight || totalMetricWeight.value)}%</td>
+                      <td colspan="2" style="text-align:center; font-size:11pt;">คะแนนรวม: ${totalScoreText}</td>
+                      <td style="text-align:center; font-size:11pt;">${escapeHtml(gradeText)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+
+                <div class="print-feedback-box">
+                  <strong>ข้อคิดเห็นและข้อเสนอแนะในการพัฒนาของคณะกรรมการผู้ประเมิน:</strong>
+                  <p style="margin-top:4pt; white-space:pre-line;">${feedbackText}</p>
+                </div>
+
+                <div class="print-signatures">
+                  <div class="print-sign-box">
+                    <div>(ลงชื่อ)....................................................................</div>
+                    <div style="margin-top:4pt;">( ${escapeHtml(d.teacherName || '-')} )</div>
+                    <div>ผู้รับการประเมิน</div>
+                    <div>วันที่ ${dateStr}</div>
+                  </div>
+                  <div class="print-sign-box">
+                    <div>(ลงชื่อ)....................................................................</div>
+                    <div style="margin-top:4pt;">( ${escapeHtml(judgeDisplay)} )</div>
+                    <div>กรรมการผู้ประเมิน</div>
+                    <div>วันที่ ${dateStr}</div>
+                  </div>
+                </div>
+              </div>
+            `;
+          }
+
+          if (mode === 'consolidated') {
+            const rows = Array.isArray(d.metricsRows) ? d.metricsRows : [];
+            const rowsHtml = rows.length > 0
+              ? rows.map((m, idx) => `
+                <tr>
+                  <td style="text-align:center;">${idx + 1}</td>
+                  <td>
+                    <strong>${escapeHtml(m.title || '-')}</strong>
+                    ${m.description ? `<div style="font-size:9.5pt; color:#333; margin-top:2pt;">${escapeHtml(m.description)}</div>` : ''}
+                  </td>
+                  <td style="text-align:center;">${escapeHtml(m.weight)}%</td>
+                  <td style="font-size:10pt; white-space:pre-line;">${escapeHtml(m.teacherComment || '-')}</td>
+                  <td style="text-align:center;">${escapeHtml(m.selfScoreDisplay || '-')}</td>
+                  <td style="text-align:center; font-weight:bold;">${escapeHtml(m.avgScoreDisplay || '-')}</td>
+                </tr>
+              `).join('')
+              : `<tr><td colspan="6" style="text-align:center; padding:14pt;">ยังไม่มีรายการตัวชี้วัดในรอบการประเมินนี้</td></tr>`;
+
+            const judgesRows = Array.isArray(d.judgesRows) ? d.judgesRows : [];
+            const judgesHtml = judgesRows.length > 0
+              ? judgesRows.map((j, idx) => `
+                <tr>
+                  <td style="text-align:center;">${idx + 1}</td>
+                  <td><strong>${escapeHtml(j.judgeName || '-')}</strong><br><small style="font-size:9pt;">${escapeHtml(j.judgePosition || 'กรรมการ')}</small></td>
+                  <td>${escapeHtml(j.roleInBoard || 'กรรมการผู้ประเมิน')}</td>
+                  <td style="text-align:center; font-weight:bold;">${escapeHtml(j.totalScore || '-')} / 4.00</td>
+                  <td style="font-size:9.5pt; white-space:pre-line;">${escapeHtml(j.overallFeedback || 'ผลการปฏิบัติงานเป็นไปตามเกณฑ์มาตรฐาน')}</td>
+                </tr>
+              `).join('')
+              : `<tr><td colspan="5" style="text-align:center; padding:10pt;">ยังไม่มีผลประเมินจากคณะกรรมการ</td></tr>`;
+
+            const avgTotalText = (d.totalScore && d.totalScore !== '-')
+              ? `${escapeHtml(d.totalScore)} / 4.00`
+              : '- / 4.00';
+            const gradeText = getPerformanceGrade(d.totalScore).grade;
+            const chairName = d.chairJudgeName || (judgesRows.length > 0 ? judgesRows[0].judgeName : 'ประธานกรรมการ');
+
+            return `
+              <div class="print-doc-wrap">
+                <div class="print-doc-header">
+                  <h1>แบบสรุปผลการประเมินผลการปฏิบัติงานของข้าราชการครูและบุคลากรทางการศึกษา</h1>
+                  <h2>(รายงานภาพรวมผลการประเมินจากคณะกรรมการประจำสาขาวิชา)</h2>
+                  <div style="font-size: 11pt; margin-top: 4pt;">รอบการประเมิน: ${escapeHtml(d.periodName || period.value.name)}</div>
+                </div>
+
+                <table class="print-meta-table">
+                  <tr>
+                    <td width="55%"><strong>ชื่อผู้รับการประเมิน:</strong> ${escapeHtml(d.teacherName || '-')}</td>
+                    <td width="45%"><strong>ตำแหน่ง:</strong> ${escapeHtml(d.position || 'ครู')}</td>
+                  </tr>
+                  <tr>
+                    <td><strong>สังกัด / แผนกวิชา:</strong> ${escapeHtml(d.department || '-')}</td>
+                    <td><strong>เลขประจำตัวประชาชน:</strong> ${escapeHtml(d.teacherCitizenId || '-')}</td>
+                  </tr>
+                  <tr>
+                    <td><strong>สถานะการประเมิน:</strong> ประเมินเสร็จสิ้นสมบูรณ์</td>
+                    <td><strong>จำนวนกรรมการที่ร่วมประเมิน:</strong> ${escapeHtml(d.judgeCount || 0)} ท่าน</td>
+                  </tr>
+                </table>
+
+                <table class="print-table">
+                  <thead>
+                    <tr>
+                      <th width="6%">ลำดับ</th>
+                      <th width="39%">ตัวชี้วัดการประเมิน</th>
+                      <th width="12%">น้ำหนัก (%)</th>
+                      <th width="23%">ความคิดเห็นของผู้รับการประเมิน</th>
+                      <th width="10%">คะแนนตนเอง</th>
+                      <th width="10%">คะแนนเฉลี่ย</th>
+                    </tr>
+                  </thead>
+                  <tbody>${rowsHtml}</tbody>
+                  <tfoot>
+                    <tr style="background:#f9f9f9; font-weight:bold;">
+                      <td colspan="2" style="text-align:right;">คะแนนประเมินเฉลี่ยสุทธิ / ระดับการประเมิน:</td>
+                      <td style="text-align:center;">${escapeHtml(d.totalWeight || totalMetricWeight.value)}%</td>
+                      <td colspan="2" style="text-align:center; font-size:11pt;">คะแนนเฉลี่ยรวม: ${avgTotalText}</td>
+                      <td style="text-align:center; font-size:11pt;">${escapeHtml(gradeText)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+
+                <div style="margin-top:14px;">
+                  <strong style="font-size:11pt;">สรุปผลการประเมินและข้อเสนอแนะจากกรรมการผู้ประเมินแต่ละท่าน:</strong>
+                  <table class="print-table" style="margin-top:6px;">
+                    <thead>
+                      <tr>
+                        <th width="6%">ลำดับ</th>
+                        <th width="25%">กรรมการผู้ประเมิน</th>
+                        <th width="18%">บทบาทหน้าที่</th>
+                        <th width="12%">คะแนนที่ให้</th>
+                        <th>ข้อคิดเห็นและข้อเสนอแนะในการพัฒนา</th>
+                      </tr>
+                    </thead>
+                    <tbody>${judgesHtml}</tbody>
+                  </table>
+                </div>
+
+                <div class="print-signatures" style="margin-top:28px;">
+                  <div class="print-sign-box">
+                    <div>(ลงชื่อ)....................................................................</div>
+                    <div style="margin-top:4pt;">( ${escapeHtml(d.teacherName || '-')} )</div>
+                    <div>ผู้รับการประเมิน</div>
+                    <div>วันที่ ${dateStr}</div>
+                  </div>
+                  <div class="print-sign-box">
+                    <div>(ลงชื่อ)....................................................................</div>
+                    <div style="margin-top:4pt;">( ${escapeHtml(chairName)} )</div>
+                    <div>ประธานคณะกรรมการผู้ประเมินประจำสาขาวิชา</div>
+                    <div>วันที่ ${dateStr}</div>
+                  </div>
+                </div>
+              </div>
+            `;
+          }
+
+          // Mode: 'overall' (Institutional Summary Report)
+          const asnRows = Array.isArray(d.assignmentsRows) ? d.assignmentsRows : [];
+          const asnHtml = asnRows.length > 0
+            ? asnRows.map((a, idx) => `
+              <tr>
+                <td style="text-align:center;">${idx + 1}</td>
+                <td><strong>${escapeHtml(a.teacherName || '-')}</strong></td>
+                <td>${escapeHtml(a.teacherDepartment || a.department || '-')}</td>
+                <td>${escapeHtml(a.judgeName || '-')}</td>
+                <td style="text-align:center; font-weight:bold;">${escapeHtml(a.totalScore ? a.totalScore : '-')}</td>
+                <td style="text-align:center;">${escapeHtml(a.totalScore ? getPerformanceGrade(a.totalScore).grade : 'รอตรวจ')}</td>
+              </tr>
+            `).join('')
+            : `<tr><td colspan="6" style="text-align:center; padding:14pt;">ยังไม่มีรายการประเมินในรอบนี้</td></tr>`;
+
+          return `
+            <div class="print-doc-wrap">
+              <div class="print-doc-header">
+                <h1>รายงานสรุปภาพรวมผลการประเมินผลการปฏิบัติงานบุคลากรทั้งสถานศึกษา</h1>
+                <h2>${escapeHtml(d.periodName || period.value.name)}</h2>
+                <div style="font-size: 11pt; margin-top: 4pt;">พิมพ์รายงานข้อมูล ณ วันที่ ${dateStr}</div>
+              </div>
+
+              <table class="print-meta-table" style="background:#f9f9f9; border:1px solid #000 !important; margin-bottom:14px;">
+                <tr>
+                  <td width="25%"><strong>จำนวนบุคลากรทั้งหมด:</strong> ${escapeHtml(d.totalTeachers || 0)} คน</td>
+                  <td width="25%"><strong>ประเมินเสร็จสิ้นแล้ว:</strong> ${escapeHtml(d.completedAssignments || 0)} รายการ</td>
+                  <td width="25%"><strong>รอการประเมิน:</strong> ${escapeHtml(d.pendingCount || 0)} รายการ</td>
+                  <td width="25%"><strong>คะแนนเฉลี่ยรวม:</strong> ${escapeHtml(d.averageScore || '0.00')} / 4.00</td>
+                </tr>
+              </table>
+
+              <table class="print-table">
+                <thead>
+                  <tr>
+                    <th width="6%">ลำดับ</th>
+                    <th width="28%">ชื่อ - นามสกุล ผู้รับการประเมิน</th>
+                    <th width="24%">สังกัด / แผนกวิชา</th>
+                    <th width="20%">กรรมการผู้ประเมิน</th>
+                    <th width="11%">คะแนนรวม</th>
+                    <th width="11%">ระดับผล</th>
+                  </tr>
+                </thead>
+                <tbody>${asnHtml}</tbody>
+              </table>
+
+              <div class="print-signatures" style="margin-top:40px;">
+                <div class="print-sign-box">
+                  <div>(ลงชื่อ)....................................................................</div>
+                  <div style="margin-top:4pt;">( ${escapeHtml(d.hrOfficerName || (currentUser.value ? currentUser.value.name : 'เจ้าหน้าที่งานบุคลากร'))} )</div>
+                  <div>เจ้าหน้าที่งานบุคลากร</div>
+                  <div>วันที่ ${dateStr}</div>
+                </div>
+                <div class="print-sign-box">
+                  <div>(ลงชื่อ)....................................................................</div>
+                  <div style="margin-top:4pt;">( นายพัฒนพงษ์ เทคโนแอดมิน )</div>
+                  <div>ผู้อำนวยการสถานศึกษา / ประธาน อ.ก.ค.ศ.</div>
+                  <div>วันที่ ${dateStr}</div>
+                </div>
+              </div>
+            </div>
+          `;
+        }
+
+        function buildStandaloneOfficialPageHTML(docTitle, innerHtml) {
+          return `<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(docTitle || 'เอกสารราชการสรุปผลการประเมิน')}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #cbd5e1;
+      color: #000000;
+      font-family: 'Sarabun', 'TH Sarabun New', 'Garuda', 'Noto Sans Thai', -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: 12pt;
+      line-height: 1.45;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .print-toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: #0f172a;
+      color: #f8fafc;
+      padding: 10px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+      font-family: -apple-system, BlinkMacSystemFont, 'Noto Sans Thai', sans-serif;
+    }
+    .print-toolbar-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13.5px;
+      font-weight: 600;
+    }
+    .print-toolbar-sub {
+      font-size: 11.5px;
+      color: #94a3b8;
+      font-weight: 400;
+      margin-left: 6px;
+    }
+    .print-toolbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .toolbar-btn {
+      height: 34px;
+      padding: 0 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid transparent;
+    }
+    .toolbar-btn-primary {
+      background: #4f46e5;
+      color: #ffffff;
+    }
+    .toolbar-btn-primary:hover {
+      background: #4338ca;
+    }
+    .toolbar-btn-close {
+      background: transparent;
+      color: #e2e8f0;
+      border-color: #475569;
+    }
+    .toolbar-btn-close:hover {
+      background: #1e293b;
+    }
+    .a4-sheet {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 22px auto 40px auto;
+      padding: 14mm 15mm;
+      background: #ffffff;
+      color: #000000;
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.22);
+    }
+    .print-doc-header {
+      text-align: center;
+      margin-bottom: 16px;
+      border-bottom: 2px solid #000000;
+      padding-bottom: 10px;
+    }
+    .print-doc-header h1 {
+      font-size: 14.5pt;
+      font-weight: bold;
+      margin-bottom: 3pt;
+      color: #000000;
+    }
+    .print-doc-header h2 {
+      font-size: 12.5pt;
+      font-weight: bold;
+      margin-bottom: 2pt;
+      color: #000000;
+    }
+    .print-meta-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 14px;
+    }
+    .print-meta-table td {
+      padding: 4px 6px;
+      font-size: 11pt;
+      border: none;
+      color: #000000;
+    }
+    .print-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 16px;
+    }
+    .print-table th, .print-table td {
+      border: 1px solid #000000;
+      padding: 6px 8px;
+      font-size: 10.5pt;
+      color: #000000;
+      vertical-align: top;
+    }
+    .print-table th {
+      background-color: #f2f2f2;
+      font-weight: bold;
+      text-align: center;
+    }
+    .print-feedback-box {
+      border: 1px solid #000000;
+      padding: 10px 12px;
+      margin-bottom: 18px;
+      font-size: 11pt;
+      color: #000000;
+      page-break-inside: avoid;
+    }
+    .print-signatures {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 28px;
+      page-break-inside: avoid;
+    }
+    .print-sign-box {
+      width: 45%;
+      text-align: center;
+      font-size: 11pt;
+      line-height: 1.65;
+      color: #000000;
+    }
+    @media print {
+      @page {
+        size: A4 portrait;
+        margin: 14mm 15mm 14mm 15mm;
+      }
+      html, body {
+        background: #ffffff !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 100% !important;
+      }
+      .no-print {
+        display: none !important;
+      }
+      .a4-sheet {
+        width: 100% !important;
+        min-height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        box-shadow: none !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="print-toolbar no-print">
+    <div class="print-toolbar-title">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+      <span>${escapeHtml(docTitle || 'เอกสารราชการสรุปผลการประเมิน')}</span>
+      <span class="print-toolbar-sub">(ขนาดมาตรฐาน A4 - เลือก Save as PDF เพื่อบันทึกไฟล์)</span>
+    </div>
+    <div class="print-toolbar-actions">
+      <button type="button" class="toolbar-btn toolbar-btn-primary" onclick="window.focus(); window.print();">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+        <span>สั่งพิมพ์ / บันทึกเป็นไฟล์ PDF</span>
+      </button>
+      <button type="button" class="toolbar-btn toolbar-btn-close" onclick="window.close();">
+        <span>ปิดหน้าต่าง</span>
+      </button>
+    </div>
+  </div>
+  <div class="a4-sheet">
+    ${innerHtml}
+  </div>
+</body>
+</html>`;
+        }
+
+        function executeOfficialPrint(mode, data, docTitle, preferInPage = false) {
+          const innerHtml = buildOfficialInnerHTML(mode, data);
+          const printEl = document.getElementById('print-document');
+          if (printEl) {
+            printEl.innerHTML = innerHtml;
+          }
+
+          if (preferInPage) {
+            const prevTitle = document.title;
+            if (docTitle) document.title = docTitle;
+            window.print();
+            setTimeout(() => { document.title = prevTitle; }, 500);
+            return;
+          }
+
+          let win = null;
+          try {
+            win = window.open('', '_blank');
+          } catch (e) {
+            win = null;
+          }
+
+          if (win && win.document) {
+            win.document.open();
+            win.document.write(buildStandaloneOfficialPageHTML(docTitle, innerHtml));
+            win.document.close();
+            win.focus();
+            setTimeout(() => {
+              try {
+                win.focus();
+                win.print();
+              } catch (err) {
+                console.warn('Auto print dialog skipped:', err);
+              }
+            }, 120);
+            return;
+          }
+
+          // Synchronous fallback on current page when popup is blocked or in single-window webview
+          const prevTitle = document.title;
+          if (docTitle) document.title = docTitle;
+          window.print();
+          setTimeout(() => { document.title = prevTitle; }, 500);
+        }
+
         async function openIndividualReportModal(candidate) {
           try {
             let assignmentId = candidate.assignmentId || candidate.id;
@@ -3588,17 +3899,29 @@
             const asn = res.data?.assignment || {};
             const mList = res.data?.metrics || [];
             const sum = res.data?.summary || null;
+            const isActiveWorkspace = (
+              judgeViewMode.value === 'workspace' &&
+              currentJudgeCandidate.value &&
+              Number(currentJudgeCandidate.value.assignmentId) === Number(assignmentId)
+            );
+
+            let draftWeightedSum = 0;
+            let draftWeightTotal = 0;
+            let hasDraftScore = false;
 
             const metricsRows = mList.map(m => {
               let jScore = m.existingJudgeScore;
-              if (
-                (jScore === null || jScore === undefined) &&
-                judgeViewMode.value === 'workspace' &&
-                currentJudgeCandidate.value &&
-                Number(currentJudgeCandidate.value.assignmentId) === Number(assignmentId) &&
-                judgeScores.value[m.metricId] !== undefined
-              ) {
+              if ((jScore === null || jScore === undefined) && isActiveWorkspace && judgeScores.value[m.metricId] !== undefined) {
                 jScore = judgeScores.value[m.metricId];
+              }
+              if (jScore !== null && jScore !== undefined && jScore !== '') {
+                const numericScore = parseFloat(jScore);
+                const w = Number(m.weight) || 0;
+                if (!isNaN(numericScore)) {
+                  draftWeightedSum += (numericScore * w);
+                  draftWeightTotal += w;
+                  hasDraftScore = true;
+                }
               }
               return {
                 id: m.metricId || m.id,
@@ -3612,6 +3935,20 @@
             });
 
             const totalWeight = metricsRows.reduce((acc, r) => acc + (Number(r.weight) || 0), 0);
+            let computedTotalScore = '-';
+            if (sum && sum.totalScore !== null && sum.totalScore !== undefined) {
+              computedTotalScore = Number(sum.totalScore).toFixed(2);
+            } else if (candidate.totalScore) {
+              computedTotalScore = Number(candidate.totalScore).toFixed(2);
+            } else if (hasDraftScore && draftWeightTotal > 0) {
+              computedTotalScore = (draftWeightedSum / draftWeightTotal).toFixed(2);
+            }
+
+            const computedFeedback = (sum && sum.overallFeedback)
+              || candidate.overallFeedback
+              || (isActiveWorkspace ? judgeOverallFeedback.value : '')
+              || '';
+
             const reportData = {
               assignmentId,
               periodName: asn.periodName || period.value.name,
@@ -3622,33 +3959,41 @@
               position: asn.position || candidate.position || 'ครู',
               judgeName: asn.judgeName || candidate.judgeName || (currentUser.value ? currentUser.value.name : '-'),
               roleInBoard: asn.roleInBoard || candidate.roleInBoard || 'กรรมการผู้ประเมิน',
-              totalScore: sum && sum.totalScore !== null && sum.totalScore !== undefined
-                ? Number(sum.totalScore).toFixed(2)
-                : (candidate.totalScore || '-'),
-              overallFeedback: (sum && sum.overallFeedback) || candidate.overallFeedback || '',
+              totalScore: computedTotalScore,
+              overallFeedback: computedFeedback,
               metricsRows,
               totalWeight
             };
 
             selectedReportItem.value = reportData;
             printCandidateData.value = reportData;
+            const printEl = document.getElementById('print-document');
+            if (printEl) {
+              printEl.innerHTML = buildOfficialInnerHTML('individual', reportData);
+            }
             showReportModal.value = true;
           } catch (err) {
             alert('ไม่สามารถโหลดข้อมูลรายงานได้: ' + err.message);
           }
         }
 
-        async function triggerPrintFromModal() {
+        function triggerPrintFromModal() {
+          if (!selectedReportItem.value) return;
           printMode.value = 'individual';
           printCandidateData.value = selectedReportItem.value;
-          await nextTick();
-          setTimeout(() => { window.print(); }, 120);
+          const docTitle = `แบบสรุปผลการประเมิน_${selectedReportItem.value.teacherName || 'รายบุคคล'}`;
+          executeOfficialPrint('individual', selectedReportItem.value, docTitle, false);
         }
 
-        async function triggerPrintIndividualForTeacher() {
-          if (!metrics.value || metrics.value.length === 0) {
-            await loadTeacherEvaluationSheet(selectedPeriodId.value);
-          }
+        function triggerPrintInPageFromModal() {
+          if (!selectedReportItem.value) return;
+          printMode.value = 'individual';
+          printCandidateData.value = selectedReportItem.value;
+          const docTitle = `แบบสรุปผลการประเมิน_${selectedReportItem.value.teacherName || 'รายบุคคล'}`;
+          executeOfficialPrint('individual', selectedReportItem.value, docTitle, true);
+        }
+
+        function triggerPrintIndividualForTeacher() {
           const currentJudge = teacherJudgeEvaluations.value[selectedJudgeEvalIdx.value] || teacherJudgeFeedback.value;
           const metricScoresMap = (currentJudge && currentJudge.metricScores) ? currentJudge.metricScores : {};
 
@@ -3663,8 +4008,7 @@
           }));
           const totalWeight = metricsRows.reduce((acc, r) => acc + (Number(r.weight) || 0), 0);
 
-          printMode.value = 'individual';
-          printCandidateData.value = {
+          const reportData = {
             teacherName: currentUser.value.name,
             position: currentUser.value.position || 'ครู',
             department: currentUser.value.department || '-',
@@ -3677,14 +4021,13 @@
             metricsRows,
             totalWeight
           };
-          await nextTick();
-          setTimeout(() => { window.print(); }, 120);
+          printMode.value = 'individual';
+          printCandidateData.value = reportData;
+          const docTitle = `ผลการประเมินรายกรรมการ_${currentUser.value.name}_${reportData.judgeName}`;
+          executeOfficialPrint('individual', reportData, docTitle, false);
         }
 
-        async function triggerPrintConsolidated() {
-          if (!metrics.value || metrics.value.length === 0) {
-            await loadTeacherEvaluationSheet(selectedPeriodId.value);
-          }
+        function triggerPrintConsolidated() {
           const avgMap = (teacherConsolidatedSummary.value && teacherConsolidatedSummary.value.metricAverages)
             ? teacherConsolidatedSummary.value.metricAverages
             : {};
@@ -3699,27 +4042,41 @@
             avgScoreDisplay: formatJudgeScoreDisplay(avgMap[m.id])
           }));
           const totalWeight = metricsRows.reduce((acc, r) => acc + (Number(r.weight) || 0), 0);
+          const judgesRows = teacherJudgeEvaluations.value || [];
 
-          printMode.value = 'consolidated';
-          printCandidateData.value = {
+          const reportData = {
             teacherName: currentUser.value.name,
             position: currentUser.value.position || 'ครู',
             department: currentUser.value.department || '-',
             teacherCitizenId: currentUser.value.citizenId,
             periodName: period.value.name,
             totalScore: teacherConsolidatedSummary.value ? teacherConsolidatedSummary.value.averageTotalScore : '-',
-            judgeCount: teacherJudgeEvaluations.value.length,
+            judgeCount: judgesRows.length,
+            judgesRows,
+            chairJudgeName: judgesRows.length > 0 ? judgesRows[0].judgeName : 'ประธานกรรมการ',
             metricsRows,
             totalWeight
           };
-          await nextTick();
-          setTimeout(() => { window.print(); }, 120);
+          printMode.value = 'consolidated';
+          printCandidateData.value = reportData;
+          const docTitle = `ผลการประเมินรวม_${currentUser.value.name}`;
+          executeOfficialPrint('consolidated', reportData, docTitle, false);
         }
 
-        async function triggerPrintOverallReport() {
+        function triggerPrintOverallReport() {
+          const reportData = {
+            periodName: period.value.name,
+            totalTeachers: hrStats.value.totalTeachers || 0,
+            completedAssignments: hrStats.value.completedAssignments || 0,
+            pendingCount: (hrStats.value.pendingAssignments || 0) + (hrStats.value.submittedAssignments || 0),
+            averageScore: hrStats.value.averageScore || '0.00',
+            assignmentsRows: assignments.value || [],
+            hrOfficerName: currentUser.value ? currentUser.value.name : 'เจ้าหน้าที่งานบุคลากร'
+          };
           printMode.value = 'overall';
-          await nextTick();
-          setTimeout(() => { window.print(); }, 120);
+          printCandidateData.value = reportData;
+          const docTitle = `รายงานสรุปภาพรวมสถานศึกษา_${period.value.name}`;
+          executeOfficialPrint('overall', reportData, docTitle, false);
         }
 
         // Filtered Judge Candidates & Stats
@@ -4318,7 +4675,7 @@
           showRejectDeptModal, rejectDeptTarget, rejectDeptReason, openRejectDeptModal, confirmRejectDepartmentRequest,
           metrics, totalMetricWeight, assignments, hrStats, newMetric, newAssign, teachers, judges, savePeriod, addMetric, deleteMetric, saveAssign, removeAssignment,
           showReportModal, selectedReportItem, printMode, printCandidateData,
-          openIndividualReportModal, triggerPrintFromModal, triggerPrintIndividualForTeacher, triggerPrintConsolidated, triggerPrintOverallReport,
+          openIndividualReportModal, triggerPrintFromModal, triggerPrintInPageFromModal, triggerPrintIndividualForTeacher, triggerPrintConsolidated, triggerPrintOverallReport,
           teacherTab, teacherScores, teacherComments, teacherEvidence, teacherSubmissionStatus, teacherSubmittedAt,
           isTeacherDeptApproved, isTeacherFormLocked, isEditingSelfEval, showEditSelfWarningModal,
           requestEditSelfEval, confirmUnlockSelfEval, cancelEditSelfEval,
