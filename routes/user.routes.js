@@ -1,18 +1,13 @@
-// routes/user.routes.js
-const express = require('express');
-const router = express.Router();
-const userController = require('../controllers/user.controller');
+const router = require('express').Router();
+const c = require('../controllers/user.controller');
 const { authenticateToken, requireRole } = require('../middleware/auth.middleware');
 
-// Apply authentication to all user management routes
-router.use(authenticateToken);
-
-// Admin & HR can manage users
-router.get('/', requireRole('admin', 'hr'), userController.getUsers);
-router.get('/:citizenId', requireRole('admin', 'hr'), userController.getUserByCitizenId);
-router.post('/', requireRole('admin', 'hr'), userController.createUser);
-router.put('/:citizenId/reset-password', requireRole('admin', 'hr'), userController.resetUserPassword);
-router.put('/:citizenId', requireRole('admin', 'hr'), userController.updateUser);
-router.delete('/:citizenId', requireRole('admin', 'hr'), userController.deleteUser);
+router.use(authenticateToken, requireRole('admin', 'hr'));
+router.get('/', c.getUsers);
+router.get('/:citizenId', c.getUserByCitizenId);
+router.post('/', c.createUser);
+router.put('/:citizenId/reset-password', c.resetUserPassword);
+router.put('/:citizenId', c.updateUser);
+router.delete('/:citizenId', c.deleteUser);
 
 module.exports = router;

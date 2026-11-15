@@ -1,4 +1,3 @@
-// public/js/app.js
 import { setUnauthorizedHandler } from './api.js';
 import VIcon from './components/VIcon.js';
 import AuthScreen from './components/AuthScreen.js';
@@ -16,43 +15,27 @@ import {
   loadTeacherEvaluationSheet, teacherScores, teacherComments, teacherEvidence,
   teacherJudgeEvaluations, teacherConsolidatedSummary, createTeacherActions
 } from './composables/useTeacher.js';
-import {
-  judgeViewMode, judgeCandidates, loadJudgeCandidates, createJudgeActions
-} from './composables/useJudge.js';
+import { judgeViewMode, judgeCandidates, loadJudgeCandidates, createJudgeActions } from './composables/useJudge.js';
 
 const { createApp, onMounted } = window.Vue;
 
 const app = createApp({
-  components: {
-    AuthScreen,
-    AdminDashboard,
-    TeacherDashboard,
-    JudgeDashboard,
-    AppModals
-  },
+  components: { AuthScreen, AdminDashboard, TeacherDashboard, JudgeDashboard, AppModals },
   setup() {
-    function resetSessionState() {
-      teacherScores.value = {};
-      teacherComments.value = {};
-      teacherEvidence.value = {};
-      teacherJudgeEvaluations.value = [];
-      teacherConsolidatedSummary.value = null;
-      judgeCandidates.value = [];
-      judgeViewMode.value = 'list';
-    }
+    const resetSessionState = () => {
+      teacherScores.value = {}; teacherComments.value = {}; teacherEvidence.value = {};
+      teacherJudgeEvaluations.value = []; teacherConsolidatedSummary.value = null;
+      judgeCandidates.value = []; judgeViewMode.value = 'list';
+    };
 
     async function loadInitialData() {
       if (!currentUser.value) return;
       await loadPeriods();
       await loadPublicDepartments();
-
-      if (currentUser.value.role === 'admin' || currentUser.value.role === 'hr') {
-        await loadAdminDashboard();
-      } else if (currentUser.value.role === 'teacher') {
-        await loadTeacherEvaluationSheet(selectedPeriodId.value);
-      } else if (currentUser.value.role === 'judge') {
-        await loadJudgeCandidates(selectedPeriodId.value);
-      }
+      const role = currentUser.value.role;
+      if (role === 'admin' || role === 'hr') await loadAdminDashboard();
+      else if (role === 'teacher') await loadTeacherEvaluationSheet(selectedPeriodId.value);
+      else if (role === 'judge') await loadJudgeCandidates(selectedPeriodId.value);
     }
 
     const authActions = createAuthActions({
@@ -75,24 +58,14 @@ const app = createApp({
         try {
           currentUser.value = JSON.parse(savedUser);
           await loadInitialData();
-        } catch (e) {
-          authActions.logout();
-        }
+        } catch { authActions.logout(); }
       }
     });
 
     return {
-      currentUser,
-      authActions,
-      adminActions,
-      teacherActions,
-      judgeActions,
-      openProfileModal: authActions.openProfileModal,
-      logout: authActions.logout,
-      confirmModalState,
-      resolveConfirmDialog,
-      toastList,
-      dismissToast
+      currentUser, authActions, adminActions, teacherActions, judgeActions,
+      openProfileModal: authActions.openProfileModal, logout: authActions.logout,
+      confirmModalState, resolveConfirmDialog, toastList, dismissToast
     };
   }
 });

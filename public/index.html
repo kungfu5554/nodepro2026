@@ -3,9 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ระบบประเมินผลการปฏิบัติงานบุคลากร (Personnel Evaluation System)</title>
+  <title>ระบบประเมินผลการปฏิบัติงานบุคลากร</title>
   <link rel="stylesheet" href="/css/main.css">
-  <!-- Vue 3 local script with fallback -->
   <script src="/js/vue.global.js"></script>
   <script>
     if (typeof Vue === 'undefined') {
@@ -20,26 +19,18 @@
     <div v-else>
       <header class="navbar">
         <div class="brand">
-          <div class="brand-badge">
-            <v-icon name="building" size="16"></v-icon>
-          </div>
           <span>ระบบประเมินผลการปฏิบัติงานบุคลากร</span>
         </div>
         <div class="user-meta">
           <button @click="openProfileModal" class="btn-profile">
-            <v-icon name="user" size="13"></v-icon>
-            <span>{{ currentUser.name }}</span>
+            {{ currentUser.name }}
           </button>
           <span class="user-role-badge">
-            <v-icon v-if="currentUser.role === 'admin' || currentUser.role === 'hr'" name="shield" size="13"></v-icon>
-            <v-icon v-else-if="currentUser.role === 'teacher'" name="user" size="13"></v-icon>
-            <v-icon v-else name="award" size="13"></v-icon>
             <span v-if="currentUser.role === 'admin' || currentUser.role === 'hr'">Admin &amp; HR</span>
             <span v-else>{{ currentUser.roleTitle }}</span>
           </span>
           <button @click="logout" class="btn-logout">
-            <v-icon name="logout" size="13"></v-icon>
-            <span>ออกจากระบบ</span>
+            ออกจากระบบ
           </button>
         </div>
       </header>
@@ -67,12 +58,11 @@
       </app-modals>
     </div>
 
-    <!-- Global In-App Confirmation Dialog (works across all browsers & webviews) -->
+    <!-- Confirmation Modal -->
     <div v-if="confirmModalState.visible" class="modal-overlay" style="z-index: 250;" @click.self="resolveConfirmDialog(false)">
       <div class="modal-content" style="max-width: 440px;">
         <div class="modal-header">
           <h3 :style="confirmModalState.danger ? 'color: var(--danger);' : 'color: var(--primary);'">
-            <v-icon name="alert-circle" size="16"></v-icon>
             {{ confirmModalState.title }}
           </h3>
           <button type="button" @click="resolveConfirmDialog(false)" class="btn-outline" style="padding: 4px 8px;">✕</button>
@@ -85,35 +75,27 @@
           <button
             type="button"
             @click="resolveConfirmDialog(true)"
-            :class="confirmModalState.danger ? 'btn-danger' : 'btn-primary'"
-            :style="confirmModalState.danger ? 'background: var(--danger); color: #fff; border: none; padding: 8px 16px; border-radius: var(--radius-sm); cursor: pointer; font-weight: 600;' : ''">
+            :class="confirmModalState.danger ? 'btn-danger' : 'btn-primary'">
             {{ confirmModalState.confirmText }}
           </button>
         </div>
       </div>
     </div>
 
-    <!-- Global Toast Notifications -->
-    <div v-if="toastList.length > 0" style="position: fixed; top: 16px; right: 16px; z-index: 300; display: flex; flex-direction: column; gap: 8px; max-width: 400px; width: calc(100vw - 32px);">
+    <!-- Toast Notifications -->
+    <div v-if="toastList.length > 0" class="toast-container">
       <div
         v-for="t in toastList"
         :key="t.id"
         class="alert"
-        :class="t.type === 'error' ? 'error' : (t.type === 'success' ? 'success' : '')"
-        :style="t.type !== 'error' && t.type !== 'success' ? 'background:#eff6ff; color:#1e40af; border:1px solid #bfdbfe;' : ''"
-        style="margin-bottom: 0; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.12); justify-content: space-between; align-items: flex-start;">
-        <div style="display:flex; align-items:flex-start; gap:8px; line-height:1.45;">
-          <v-icon :name="t.type === 'error' ? 'alert-circle' : 'check-circle'" size="16" style="flex-shrink:0; margin-top:2px;"></v-icon>
-          <span>{{ t.message }}</span>
-        </div>
-        <button type="button" @click="dismissToast(t.id)" style="background:none; border:none; cursor:pointer; font-weight:700; color:inherit; opacity:0.75; padding:0 4px;">✕</button>
+        :class="t.type === 'error' ? 'error' : (t.type === 'success' ? 'success' : '')">
+        <span>{{ t.message }}</span>
+        <button type="button" @click="dismissToast(t.id)" class="toast-close">✕</button>
       </div>
     </div>
   </div>
 
-  <!-- Isolated Print Container outside #app for sync official printing -->
   <div id="print-document"></div>
-
   <script type="module" src="/js/app.js"></script>
 </body>
 </html>

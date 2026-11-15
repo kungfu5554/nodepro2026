@@ -1,21 +1,8 @@
-// routes/index.js
-const express = require('express');
-const router = express.Router();
-
-const authRoutes = require('./auth.routes');
-const userRoutes = require('./user.routes');
-const hrRoutes = require('./hr.routes');
-const evaluateeRoutes = require('./evaluatee.routes');
-const judgeRoutes = require('./judge.routes');
-const uploadRoutes = require('./upload.routes');
-
-// Mount sub-routers
-router.use('/auth', authRoutes);
-router.use('/users', userRoutes);
-router.use('/hr', hrRoutes);
-router.use('/evaluatee', evaluateeRoutes);
-router.use('/judge', judgeRoutes);
-router.use('/upload', uploadRoutes);
-
+const router = require('express').Router();
+router.use('/auth', require('./auth.routes'));
+router.use('/users', require('./user.routes'));
+router.use('/hr', require('./hr.routes'));
+router.use('/evaluatee', require('./evaluatee.routes'));
+router.use('/judge', require('./judge.routes'));
+router.use('/upload', require('./upload.routes'));
 module.exports = router;
-

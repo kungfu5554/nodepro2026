@@ -1,49 +1,24 @@
-// middleware/auth.middleware.js
 const jwt = require('jsonwebtoken');
 const { getJwtSecret, fail } = require('../utils/response');
 
-function extractCookieToken(cookieHeader) {
-  if (!cookieHeader) return null;
-  const parts = cookieHeader.split(';');
-  for (const part of parts) {
-    const [key, ...rest] = part.trim().split('=');
-    if (key === 'auth_token') {
-      return decodeURIComponent(rest.join('='));
-    }
-  }
-  return null;
-}
+const extractCookieToken = (c) => {
+  const m = (c || '').match(/(?:^|;\s*)auth_token=([^;]*)/);
+  return m ? decodeURIComponent(m[1]) : null;
+};
 
-// Verify JWT Bearer token from Authorization header or HttpOnly auth_token cookie
-function authenticateToken(req, res, next) {
-  const authHeader = req.headers['authorization'];
-  const headerToken = authHeader && authHeader.split(' ')[1];
-  const token = headerToken || extractCookieToken(req.headers.cookie);
-
-  if (!token) {
-    return fail(res, 'Access token required. Please login first.', 401);
-  }
-
-  jwt.verify(token, getJwtSecret(), (err, decodedUser) => {
-    if (err) {
-      return fail(res, 'Invalid or expired token.', 403);
-    }
-    req.user = decodedUser;
+const authenticateToken = (req, res, next) => {
+  const token = (req.headers.authorization || '').split(' ')[1] || extractCookieToken(req.headers.cookie);
+  if (!token) return fail(res, 'Access token required. Please login first.', 401);
+  jwt.verify(token, getJwtSecret(), (err, user) => {
+    if (err) return fail(res, 'Invalid or expired token.', 403);
+    req.user = user;
     next();
   });
-}
-
-// Role-based access control middleware
-function requireRole(...allowedRoles) {
-  return (req, res, next) => {
-    if (!req.user || !allowedRoles.includes(req.user.role)) {
-      return fail(res, 'Access denied: insufficient permissions for this operation.', 403);
-    }
-    next();
-  };
-}
-
-module.exports = {
-  authenticateToken,
-  requireRole
 };
+
+const requireRole = (...roles) => (req, res, next) =>
+  !req.user || !roles.includes(req.user.role)
+    ? fail(res, 'Access denied: insufficient permissions for this operation.', 403)
+    : next();
+
+module.exports = { authenticateToken, requireRole };

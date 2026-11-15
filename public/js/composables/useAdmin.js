@@ -1,4 +1,3 @@
-// public/js/composables/useAdmin.js
 import { fetchAPI } from '../api.js';
 import { stripKnownPrefix } from '../utils/formatters.js';
 import { executeOfficialPrint } from '../utils/print-reports.js';
@@ -29,7 +28,6 @@ export const accountForm = ref({ password: '', confirmPassword: '' });
 
 export const showEditMetricModal = ref(false);
 export const editMetricForm = ref({ id: null, categoryId: '', title: '', description: '', weight: 0, evalType: 'SCALE', evidenceType: 'PDF' });
-
 export const newCategory = ref({ name: '', description: '', sortOrder: 1 });
 export const showEditCategoryModal = ref(false);
 export const editCategoryForm = ref({ id: null, name: '', description: '', sortOrder: 1 });
@@ -58,9 +56,7 @@ export const showRejectDeptModal = ref(false);
 export const rejectDeptTarget = ref(null);
 export const rejectDeptReason = ref('');
 
-export const pendingDepartmentRequests = computed(() =>
-  (departmentRequests.value || []).filter(r => r.deptStatus === 'PENDING')
-);
+export const pendingDepartmentRequests = computed(() => (departmentRequests.value || []).filter(r => r.deptStatus === 'PENDING'));
 
 export const adminUserDepartmentOptions = computed(() => {
   const set = new Set();
@@ -74,11 +70,7 @@ export const filteredUsers = computed(() => {
   const q = userSearchQuery.value.trim().toLowerCase();
   return usersList.value.filter(u => {
     const matchRole = userFilterRole.value === 'ALL' || u.role === userFilterRole.value;
-    const matchSearch = !q ||
-      (u.name && u.name.toLowerCase().includes(q)) ||
-      (u.citizenId && u.citizenId.includes(q)) ||
-      (u.department && u.department.toLowerCase().includes(q)) ||
-      (u.requestedDepartment && u.requestedDepartment.toLowerCase().includes(q));
+    const matchSearch = !q || u.name?.toLowerCase().includes(q) || u.citizenId?.includes(q) || u.department?.toLowerCase().includes(q) || u.requestedDepartment?.toLowerCase().includes(q);
     return matchRole && matchSearch;
   });
 });
@@ -89,22 +81,14 @@ export const filteredTrackingEvaluatees = computed(() => {
   const q = trackingSearchQuery.value.trim().toLowerCase();
   return (trackingEvaluatees.value || []).filter(e => {
     const matchStage = trackingStageFilter.value === 'ALL' || e.workflowStage === trackingStageFilter.value;
-    const matchQ = !q ||
-      (e.name && e.name.toLowerCase().includes(q)) ||
-      (e.department && e.department.toLowerCase().includes(q)) ||
-      (e.citizenId && e.citizenId.includes(q));
+    const matchQ = !q || e.name?.toLowerCase().includes(q) || e.department?.toLowerCase().includes(q) || e.citizenId?.includes(q);
     return matchStage && matchQ;
   });
 });
 
 export const filteredTrackingJudges = computed(() => {
   const q = trackingSearchQuery.value.trim().toLowerCase();
-  return (trackingJudges.value || []).filter(j =>
-    !q ||
-    (j.name && j.name.toLowerCase().includes(q)) ||
-    (j.citizenId && j.citizenId.includes(q)) ||
-    (j.assignedDepartments || []).some(d => d.departmentName.toLowerCase().includes(q))
-  );
+  return (trackingJudges.value || []).filter(j => !q || j.name?.toLowerCase().includes(q) || j.citizenId?.includes(q) || (j.assignedDepartments || []).some(d => d.departmentName.toLowerCase().includes(q)));
 });
 
 export async function loadAdminDashboard() {
@@ -125,15 +109,7 @@ export async function loadAdminDashboard() {
   departmentsList.value = deptRes.data || [];
   departmentJudgesList.value = deptJudgesRes.data || [];
   departmentRequests.value = deptReqRes.data || [];
-  if (periodRes.data) {
-    period.value = {
-      id: periodRes.data.id,
-      name: periodRes.data.name,
-      startDate: periodRes.data.startDate || '',
-      endDate: periodRes.data.endDate || '',
-      isOpen: Boolean(periodRes.data.isOpen)
-    };
-  }
+  if (periodRes.data) period.value = { id: periodRes.data.id, name: periodRes.data.name, startDate: periodRes.data.startDate || '', endDate: periodRes.data.endDate || '', isOpen: Boolean(periodRes.data.isOpen) };
   metricCategories.value = categoriesRes.data || [];
   metrics.value = metricsRes.data || [];
   assignments.value = assignRes.data || [];
@@ -143,103 +119,62 @@ export async function loadAdminDashboard() {
 }
 
 export function createAdminActions(reloadAll) {
-  async function onAdminPeriodSelectChange() {
-    try {
-      await loadAdminDashboard();
-    } catch (e) {
-      console.warn(e);
-    }
-  }
+  const onAdminPeriodSelectChange = async () => { try { await loadAdminDashboard(); } catch (e) { console.warn(e); } };
 
   function openUserModal(mode, user = null) {
     userModalMode.value = mode;
     if (mode === 'edit' && user) {
       const form = {
-        id: user.id,
-        role: user.role || 'teacher',
-        prefix: user.prefix || 'นาย',
-        name: stripKnownPrefix(user.name || ''),
-        citizenId: user.citizenId || '',
-        departmentSelect: '',
-        customDepartment: '',
-        department: user.department || '',
-        deptStatus: user.deptStatus || 'APPROVED',
-        position: user.position || '',
-        requiredJudges: Number(user.requiredJudges) || 3,
-        password: ''
+        id: user.id, role: user.role || 'teacher', prefix: user.prefix || 'นาย', name: stripKnownPrefix(user.name || ''),
+        citizenId: user.citizenId || '', departmentSelect: '', customDepartment: '', department: user.department || '',
+        deptStatus: user.deptStatus || 'APPROVED', position: user.position || '', requiredJudges: Number(user.requiredJudges) || 3, password: ''
       };
       const opts = adminUserDepartmentOptions.value;
-      if (user.deptStatus === 'PENDING' && user.requestedDepartment) {
-        form.departmentSelect = '__CUSTOM__';
-        form.customDepartment = user.requestedDepartment;
-      } else if (user.department && opts.includes(user.department)) {
-        form.departmentSelect = user.department;
-      } else if (user.department) {
-        form.departmentSelect = '__CUSTOM__';
-        form.customDepartment = user.department;
-      }
+      if (user.deptStatus === 'PENDING' && user.requestedDepartment) { form.departmentSelect = '__CUSTOM__'; form.customDepartment = user.requestedDepartment; }
+      else if (user.department && opts.includes(user.department)) form.departmentSelect = user.department;
+      else if (user.department) { form.departmentSelect = '__CUSTOM__'; form.customDepartment = user.department; }
       userModalForm.value = form;
     } else {
-      userModalForm.value = {
-        id: null, role: 'teacher', prefix: 'นาย', name: '', citizenId: '',
-        departmentSelect: '', customDepartment: '', department: '',
-        deptStatus: 'APPROVED', position: '', requiredJudges: 3, password: ''
-      };
+      userModalForm.value = { id: null, role: 'teacher', prefix: 'นาย', name: '', citizenId: '', departmentSelect: '', customDepartment: '', department: '', deptStatus: 'APPROVED', position: '', requiredJudges: 3, password: '' };
     }
     showUserModal.value = true;
   }
 
   async function saveUserModal() {
     try {
-      if (!userModalForm.value.departmentSelect) {
-        showToast('กรุณาเลือกสาขาวิชา / สังกัดหน่วยงาน', 'error');
-        return;
+      const cid = String(userModalForm.value.citizenId || '').trim();
+      if (!/^\d{13}$/.test(cid)) return showToast('เลขประจำตัวประชาชนต้องเป็นตัวเลข 13 หลักเท่านั้น', 'error');
+      if (userModalForm.value.phone) {
+        const ph = String(userModalForm.value.phone || '').trim();
+        if (!/^\d{10}$/.test(ph)) return showToast('เบอร์โทรศัพท์ต้องเป็นตัวเลข 10 หลักเท่านั้น', 'error');
       }
+      if (!userModalForm.value.departmentSelect) return showToast('กรุณาเลือกสาขาวิชา / สังกัดหน่วยงาน', 'error');
       const isCustom = userModalForm.value.departmentSelect === '__CUSTOM__';
-      const resolvedDept = isCustom
-        ? String(userModalForm.value.customDepartment || '').trim()
-        : userModalForm.value.departmentSelect;
-      if (!resolvedDept) {
-        showToast('กรุณาระบุชื่อสาขาวิชา / สังกัด', 'error');
-        return;
-      }
+      const resolvedDept = isCustom ? String(userModalForm.value.customDepartment || '').trim() : userModalForm.value.departmentSelect;
+      if (!resolvedDept) return showToast('กรุณาระบุชื่อสาขาวิชา / สังกัด', 'error');
 
       const payload = {
         ...userModalForm.value,
-        requiredJudges: Number(userModalForm.value.requiredJudges) || 3,
+        citizenId: cid,
+        requiredJudges: userModalForm.value.role === 'teacher' ? 3 : (Number(userModalForm.value.requiredJudges) || 3),
         department: resolvedDept
       };
+      if (userModalMode.value === 'add') await fetchAPI('/users', { method: 'POST', body: JSON.stringify(payload) });
+      else await fetchAPI('/users/' + (userModalForm.value.citizenId || userModalForm.value.id), { method: 'PUT', body: JSON.stringify(payload) });
 
-      if (userModalMode.value === 'add') {
-        await fetchAPI('/users', { method: 'POST', body: JSON.stringify(payload) });
-      } else {
-        await fetchAPI('/users/' + (userModalForm.value.citizenId || userModalForm.value.id), {
-          method: 'PUT',
-          body: JSON.stringify(payload)
-        });
-      }
       showUserModal.value = false;
       await reloadAll();
       showToast('บันทึกข้อมูลผู้ใช้งานเรียบร้อยแล้ว', 'success');
-    } catch (err) {
-      showToast(err.message, 'error');
-    }
+    } catch (err) { showToast(err.message, 'error'); }
   }
 
-  async function deleteUser(citizenIdOrId) {
-    const ok = await openConfirmDialog('คุณแน่ใจหรือไม่ว่าต้องการลบผู้ใช้งานนี้ออกจากระบบ?', {
-      title: 'ยืนยันการลบผู้ใช้งาน',
-      confirmText: 'ลบผู้ใช้งาน',
-      danger: true
-    });
-    if (!ok) return;
+  async function deleteUser(cid) {
+    if (!(await openConfirmDialog('คุณแน่ใจหรือไม่ว่าต้องการลบผู้ใช้งานนี้ออกจากระบบ?', { title: 'ยืนยันการลบผู้ใช้งาน', confirmText: 'ลบผู้ใช้งาน', danger: true }))) return;
     try {
-      await fetchAPI('/users/' + citizenIdOrId, { method: 'DELETE' });
+      await fetchAPI('/users/' + cid, { method: 'DELETE' });
       await reloadAll();
       showToast('ลบผู้ใช้งานสำเร็จ', 'success');
-    } catch (err) {
-      showToast(err.message, 'error');
-    }
+    } catch (err) { showToast(err.message, 'error'); }
   }
 
   function openAccountModal(user) {
@@ -249,42 +184,26 @@ export function createAdminActions(reloadAll) {
   }
 
   async function saveAccountModal() {
-    if (accountForm.value.password !== accountForm.value.confirmPassword) {
-      showToast('รหัสผ่านและการยืนยันรหัสผ่านไม่ตรงกัน', 'error');
-      return;
-    }
+    if (accountForm.value.password !== accountForm.value.confirmPassword) return showToast('รหัสผ่านและการยืนยันรหัสผ่านไม่ตรงกัน', 'error');
     try {
-      const targetKey = accountTargetUser.value.citizenId || accountTargetUser.value.id;
-      await fetchAPI('/users/' + targetKey + '/reset-password', {
-        method: 'PUT',
-        body: JSON.stringify({ password: accountForm.value.password })
+      await fetchAPI('/users/' + (accountTargetUser.value.citizenId || accountTargetUser.value.id) + '/reset-password', {
+        method: 'PUT', body: JSON.stringify({ password: accountForm.value.password })
       });
       showAccountModal.value = false;
       showToast('เปลี่ยนรหัสผ่านเรียบร้อยแล้ว', 'success');
-    } catch (err) {
-      showToast(err.message, 'error');
-    }
+    } catch (err) { showToast(err.message, 'error'); }
   }
 
   async function approveDepartmentRequest(reqItem) {
     const deptName = reqItem.requestedDepartment;
-    const ok = await openConfirmDialog(`ยืนยันการอนุมัติสาขาวิชา "${deptName}" ให้แก่ ${reqItem.name} และเพิ่มเข้าสู่รายชื่อสาขาวิชาในระบบใช่หรือไม่?`, {
-      title: 'ยืนยันการอนุมัติสาขาวิชา',
-      confirmText: 'อนุมัติ'
-    });
-    if (!ok) return;
+    if (!(await openConfirmDialog(`ยืนยันการอนุมัติสาขาวิชา "${deptName}" ให้แก่ ${reqItem.name} และเพิ่มเข้าสู่รายชื่อสาขาวิชาในระบบใช่หรือไม่?`, { title: 'ยืนยันการอนุมัติสาขาวิชา', confirmText: 'อนุมัติ' }))) return;
     try {
-      await fetchAPI(`/hr/department-requests/${reqItem.id}/approve`, {
-        method: 'POST',
-        body: JSON.stringify({ departmentName: deptName, code: approveDeptCodes.value[reqItem.id] || '' })
-      });
+      await fetchAPI(`/hr/department-requests/${reqItem.id}/approve`, { method: 'POST', body: JSON.stringify({ departmentName: deptName, code: approveDeptCodes.value[reqItem.id] || '' }) });
       approveDeptCodes.value[reqItem.id] = '';
       await loadPublicDepartments();
       await reloadAll();
       showToast(`อนุมัติสาขาวิชา "${deptName}" เรียบร้อยแล้ว บุคลากรสามารถส่งแบบประเมินได้ทันที`, 'success');
-    } catch (err) {
-      showToast(err.message, 'error');
-    }
+    } catch (err) { showToast(err.message, 'error'); }
   }
 
   function openRejectDeptModal(reqItem) {
@@ -296,113 +215,54 @@ export function createAdminActions(reloadAll) {
   async function confirmRejectDepartmentRequest() {
     if (!rejectDeptTarget.value) return;
     const reason = String(rejectDeptReason.value || '').trim();
-    if (!reason) {
-      showToast('กรุณาระบุเหตุผลที่ไม่อนุมัติ เพื่อแจ้งให้บุคลากรทราบ', 'error');
-      return;
-    }
+    if (!reason) return showToast('กรุณาระบุเหตุผลที่ไม่อนุมัติ เพื่อแจ้งให้บุคลากรทราบ', 'error');
     try {
-      await fetchAPI(`/hr/department-requests/${rejectDeptTarget.value.id}/reject`, {
-        method: 'POST',
-        body: JSON.stringify({ reason })
-      });
+      await fetchAPI(`/hr/department-requests/${rejectDeptTarget.value.id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) });
       showRejectDeptModal.value = false;
       rejectDeptTarget.value = null;
       rejectDeptReason.value = '';
       await reloadAll();
       showToast('บันทึกการไม่อนุมัติพร้อมส่งเหตุผลแจ้งบุคลากรเรียบร้อยแล้ว', 'success');
-    } catch (err) {
-      showToast(err.message, 'error');
-    }
+    } catch (err) { showToast(err.message, 'error'); }
   }
 
-  function openEditMetricModal(metric) {
-    editMetricForm.value = {
-      ...metric,
-      categoryId: metric.categoryId || ''
-    };
-    showEditMetricModal.value = true;
-  }
-
+  const openEditMetricModal = (metric) => { editMetricForm.value = { ...metric, categoryId: metric.categoryId || '' }; showEditMetricModal.value = true; };
   async function saveEditMetric() {
     try {
-      await fetchAPI('/hr/metrics/' + editMetricForm.value.id, {
-        method: 'PUT',
-        body: JSON.stringify({
-          ...editMetricForm.value,
-          categoryId: editMetricForm.value.categoryId || null
-        })
-      });
+      await fetchAPI('/hr/metrics/' + editMetricForm.value.id, { method: 'PUT', body: JSON.stringify({ ...editMetricForm.value, categoryId: editMetricForm.value.categoryId || null }) });
       showEditMetricModal.value = false;
       await reloadAll();
       showToast('บันทึกการแก้ไขตัวชี้วัดเรียบร้อยแล้ว', 'success');
-    } catch (err) {
-      showToast(err.message, 'error');
-    }
+    } catch (err) { showToast(err.message, 'error'); }
   }
 
   async function addMetricCategory() {
-    if (!newCategory.value.name || !newCategory.value.name.trim()) {
-      showToast('กรุณากรอกชื่อหัวข้อการประเมิน / หมวดหมู่', 'error');
-      return;
-    }
+    if (!newCategory.value.name?.trim()) return showToast('กรุณากรอกชื่อหัวข้อการประเมิน / หมวดหมู่', 'error');
     try {
-      await fetchAPI('/hr/metric-categories', {
-        method: 'POST',
-        body: JSON.stringify({
-          ...newCategory.value,
-          periodId: selectedAdminPeriodId.value
-        })
-      });
-      newCategory.value = {
-        name: '',
-        description: '',
-        sortOrder: (metricCategories.value?.length || 0) + 2
-      };
+      await fetchAPI('/hr/metric-categories', { method: 'POST', body: JSON.stringify({ ...newCategory.value, periodId: selectedAdminPeriodId.value }) });
+      newCategory.value = { name: '', description: '', sortOrder: (metricCategories.value?.length || 0) + 2 };
       await reloadAll();
       showToast('เพิ่มหัวข้อการประเมินเรียบร้อยแล้ว', 'success');
-    } catch (err) {
-      showToast(err.message, 'error');
-    }
+    } catch (err) { showToast(err.message, 'error'); }
   }
 
-  function openEditCategoryModal(cat) {
-    editCategoryForm.value = {
-      id: cat.id,
-      name: cat.name,
-      description: cat.description || '',
-      sortOrder: Number(cat.sortOrder) || 1
-    };
-    showEditCategoryModal.value = true;
-  }
-
+  const openEditCategoryModal = (cat) => { editCategoryForm.value = { id: cat.id, name: cat.name, description: cat.description || '', sortOrder: Number(cat.sortOrder) || 1 }; showEditCategoryModal.value = true; };
   async function saveEditCategory() {
     try {
-      await fetchAPI('/hr/metric-categories/' + editCategoryForm.value.id, {
-        method: 'PUT',
-        body: JSON.stringify(editCategoryForm.value)
-      });
+      await fetchAPI('/hr/metric-categories/' + editCategoryForm.value.id, { method: 'PUT', body: JSON.stringify(editCategoryForm.value) });
       showEditCategoryModal.value = false;
       await reloadAll();
       showToast('บันทึกการแก้ไขหัวข้อการประเมินเรียบร้อยแล้ว', 'success');
-    } catch (err) {
-      showToast(err.message, 'error');
-    }
+    } catch (err) { showToast(err.message, 'error'); }
   }
 
   async function deleteMetricCategory(id) {
-    const ok = await openConfirmDialog('ยืนยันการลบหัวข้อการประเมินนี้? (ตัวชี้วัดภายในหัวข้อนี้จะยังคงอยู่เป็นตัวชี้วัดทั่วไป)', {
-      title: 'ยืนยันการลบหัวข้อการประเมิน',
-      confirmText: 'ลบหัวข้อ',
-      danger: true
-    });
-    if (!ok) return;
+    if (!(await openConfirmDialog('ยืนยันการลบหัวข้อการประเมินนี้? (ตัวชี้วัดภายในหัวข้อนี้จะยังคงอยู่เป็นตัวชี้วัดทั่วไป)', { title: 'ยืนยันการลบหัวข้อการประเมิน', confirmText: 'ลบหัวข้อ', danger: true }))) return;
     try {
       await fetchAPI('/hr/metric-categories/' + id, { method: 'DELETE' });
       await reloadAll();
       showToast('ลบหัวข้อการประเมินเรียบร้อยแล้ว', 'success');
-    } catch (err) {
-      showToast(err.message, 'error');
-    }
+    } catch (err) { showToast(err.message, 'error'); }
   }
 
   async function openIndividualTrackingModal(teacherCitizenId) {
@@ -415,148 +275,88 @@ export function createAdminActions(reloadAll) {
     } catch (err) {
       showTrackingDetailModal.value = false;
       showToast('ไม่สามารถโหลดข้อมูลติดตามรายบุคคลได้: ' + err.message, 'error');
-    } finally {
-      trackingDetailLoading.value = false;
-    }
+    } finally { trackingDetailLoading.value = false; }
   }
 
   async function savePeriod() {
     try {
       await fetchAPI('/hr/period/' + period.value.id, {
-        method: 'PUT',
-        body: JSON.stringify({
-          name: period.value.name,
-          startDate: period.value.startDate,
-          endDate: period.value.endDate,
-          isOpen: period.value.isOpen ? 1 : 0
-        })
+        method: 'PUT', body: JSON.stringify({ name: period.value.name, startDate: period.value.startDate, endDate: period.value.endDate, isOpen: period.value.isOpen ? 1 : 0 })
       });
       await loadPeriods();
       showToast('บันทึกการตั้งค่ารอบการประเมินเรียบร้อยแล้ว', 'success');
-    } catch (err) {
-      showToast(err.message, 'error');
-    }
+    } catch (err) { showToast(err.message, 'error'); }
   }
 
   async function addMetric() {
-    if (!newMetric.value.title || !newMetric.value.weight) {
-      showToast('กรุณากรอกชื่อตัวชี้วัดและค่าน้ำหนัก', 'error');
-      return;
-    }
+    if (!newMetric.value.title || !newMetric.value.weight) return showToast('กรุณากรอกชื่อตัวชี้วัดและค่าน้ำหนัก', 'error');
     try {
-      await fetchAPI('/hr/metrics', {
-        method: 'POST',
-        body: JSON.stringify({
-          ...newMetric.value,
-          categoryId: newMetric.value.categoryId || null,
-          periodId: selectedAdminPeriodId.value
-        })
-      });
+      await fetchAPI('/hr/metrics', { method: 'POST', body: JSON.stringify({ ...newMetric.value, categoryId: newMetric.value.categoryId || null, periodId: selectedAdminPeriodId.value }) });
       newMetric.value = { categoryId: newMetric.value.categoryId || '', title: '', weight: 30, evalType: 'SCALE', evidenceType: 'PDF' };
       await reloadAll();
       showToast('เพิ่มตัวชี้วัดเรียบร้อยแล้ว', 'success');
-    } catch (err) {
-      showToast(err.message, 'error');
-    }
+    } catch (err) { showToast(err.message, 'error'); }
   }
 
   async function deleteMetric(id) {
-    const ok = await openConfirmDialog('ยืนยันการลบตัวชี้วัดนี้?', {
-      title: 'ยืนยันการลบตัวชี้วัด',
-      confirmText: 'ลบตัวชี้วัด',
-      danger: true
-    });
-    if (!ok) return;
+    if (!(await openConfirmDialog('ยืนยันการลบตัวชี้วัดนี้?', { title: 'ยืนยันการลบตัวชี้วัด', confirmText: 'ลบตัวชี้วัด', danger: true }))) return;
     try {
       await fetchAPI('/hr/metrics/' + id, { method: 'DELETE' });
       await reloadAll();
       showToast('ลบตัวชี้วัดเรียบร้อยแล้ว', 'success');
-    } catch (err) {
-      showToast(err.message, 'error');
-    }
+    } catch (err) { showToast(err.message, 'error'); }
   }
 
   async function addDepartment() {
-    if (!newDept.value.name || !newDept.value.name.trim()) {
-      showToast('กรุณากรอกชื่อสาขาวิชา/แผนก', 'error');
-      return;
-    }
+    if (!newDept.value.name?.trim()) return showToast('กรุณากรอกชื่อสาขาวิชา/แผนก', 'error');
     try {
       await fetchAPI('/hr/departments', { method: 'POST', body: JSON.stringify(newDept.value) });
       newDept.value = { name: '', code: '' };
       await loadPublicDepartments();
       await reloadAll();
       showToast('เพิ่มสาขาวิชาเรียบร้อยแล้ว', 'success');
-    } catch (err) {
-      showToast(err.message, 'error');
-    }
+    } catch (err) { showToast(err.message, 'error'); }
   }
 
   async function removeDepartment(id) {
-    const ok = await openConfirmDialog('คุณแน่ใจหรือไม่ว่าต้องการลบสาขาวิชานี้?', {
-      title: 'ยืนยันการลบสาขาวิชา',
-      confirmText: 'ลบสาขาวิชา',
-      danger: true
-    });
-    if (!ok) return;
+    if (!(await openConfirmDialog('คุณแน่ใจหรือไม่ว่าต้องการลบสาขาวิชานี้?', { title: 'ยืนยันการลบสาขาวิชา', confirmText: 'ลบสาขาวิชา', danger: true }))) return;
     try {
       await fetchAPI('/hr/departments/' + id, { method: 'DELETE' });
       await loadPublicDepartments();
       await reloadAll();
       showToast('ลบสาขาวิชาเรียบร้อยแล้ว', 'success');
-    } catch (err) {
-      showToast(err.message, 'error');
-    }
+    } catch (err) { showToast(err.message, 'error'); }
   }
 
   async function assignJudgeToDepartment() {
-    if (!newDeptJudge.value.departmentName || !newDeptJudge.value.judgeCitizenId) {
-      showToast('กรุณาเลือกสาขาวิชาและกรรมการ', 'error');
-      return;
-    }
+    if (!newDeptJudge.value.departmentName || !newDeptJudge.value.judgeCitizenId) return showToast('กรุณาเลือกสาขาวิชาและกรรมการ', 'error');
     try {
       await fetchAPI('/hr/department-judges', {
         method: 'POST',
-        body: JSON.stringify({
-          departmentName: newDeptJudge.value.departmentName,
-          judgeCitizenId: newDeptJudge.value.judgeCitizenId,
-          roleInBoard: newDeptJudge.value.roleInBoard,
-          periodId: selectedAdminPeriodId.value || 1
-        })
+        body: JSON.stringify({ departmentName: newDeptJudge.value.departmentName, judgeCitizenId: newDeptJudge.value.judgeCitizenId, roleInBoard: newDeptJudge.value.roleInBoard, periodId: selectedAdminPeriodId.value || 1 })
       });
       newDeptJudge.value.judgeCitizenId = '';
       await reloadAll();
       showToast('แต่งตั้งกรรมการประจำสาขาวิชาเรียบร้อยแล้ว', 'success');
-    } catch (err) {
-      showToast(err.message, 'error');
-    }
+    } catch (err) { showToast(err.message, 'error'); }
   }
 
   async function removeJudgeFromDepartment(id) {
-    const ok = await openConfirmDialog('คุณแน่ใจหรือไม่ว่าต้องการถอดถอนกรรมการท่านนี้ออกจากสาขาวิชา?', {
-      title: 'ยืนยันการถอดถอนกรรมการ',
-      confirmText: 'ถอดถอน',
-      danger: true
-    });
-    if (!ok) return;
+    if (!(await openConfirmDialog('คุณแน่ใจหรือไม่ว่าต้องการถอดถอนกรรมการท่านนี้ออกจากสาขาวิชา?', { title: 'ยืนยันการถอดถอนกรรมการ', confirmText: 'ถอดถอน', danger: true }))) return;
     try {
       await fetchAPI('/hr/department-judges/' + id, { method: 'DELETE' });
       await reloadAll();
       showToast('ถอดถอนกรรมการเรียบร้อยแล้ว', 'success');
-    } catch (err) {
-      showToast(err.message, 'error');
-    }
+    } catch (err) { showToast(err.message, 'error'); }
   }
 
   function triggerPrintOverallReport() {
     const reportData = {
-      periodName: period.value.name,
-      totalTeachers: hrStats.value.totalTeachers || 0,
+      periodName: period.value.name, totalTeachers: hrStats.value.totalTeachers || 0,
       completedAssignments: hrStats.value.completedAssignments || 0,
       pendingCount: (hrStats.value.pendingAssignments || 0) + (hrStats.value.claimedAssignments || 0) + (hrStats.value.submittedAssignments || 0),
-      averageScore: hrStats.value.averageScore || '0.00',
-      assignmentsRows: assignments.value || [],
-      hrOfficerName: currentUser.value ? currentUser.value.name : 'เจ้าหน้าที่งานบุคลากร'
+      averageScore: hrStats.value.averageScore || '0.00', assignmentsRows: assignments.value || [],
+      hrOfficerName: currentUser.value?.name || 'เจ้าหน้าที่งานบุคลากร'
     };
     printMode.value = 'overall';
     printCandidateData.value = reportData;
@@ -564,16 +364,10 @@ export function createAdminActions(reloadAll) {
   }
 
   return {
-    onAdminPeriodSelectChange,
-    openUserModal, saveUserModal, deleteUser,
-    openAccountModal, saveAccountModal,
-    approveDepartmentRequest, openRejectDeptModal, confirmRejectDepartmentRequest,
-    openEditMetricModal, saveEditMetric,
-    addMetricCategory, openEditCategoryModal, saveEditCategory, deleteMetricCategory,
-    openIndividualTrackingModal,
-    savePeriod, addMetric, deleteMetric,
-    addDepartment, removeDepartment,
-    assignJudgeToDepartment, removeJudgeFromDepartment,
+    onAdminPeriodSelectChange, openUserModal, saveUserModal, deleteUser, openAccountModal, saveAccountModal,
+    approveDepartmentRequest, openRejectDeptModal, confirmRejectDepartmentRequest, openEditMetricModal, saveEditMetric,
+    addMetricCategory, openEditCategoryModal, saveEditCategory, deleteMetricCategory, openIndividualTrackingModal,
+    savePeriod, addMetric, deleteMetric, addDepartment, removeDepartment, assignJudgeToDepartment, removeJudgeFromDepartment,
     triggerPrintOverallReport
   };
 }

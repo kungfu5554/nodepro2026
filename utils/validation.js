@@ -1,27 +1,15 @@
-// utils/validation.js
 const { validationResult } = require('express-validator');
 const { fail } = require('./response');
 
-function handleValidationErrors(req, res, next) {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return fail(res, errors.array()[0].msg, 400);
-  }
-  next();
-}
-
-function parseRequiredJudges(value, fallback = 3) {
-  if (value === undefined || value === null || value === '') {
-    return { valid: true, value: fallback };
-  }
-  const num = Number(value);
-  if (!Number.isInteger(num) || num < 1 || num > 10) {
-    return { valid: false, value: null };
-  }
-  return { valid: true, value: num };
-}
-
-module.exports = {
-  handleValidationErrors,
-  parseRequiredJudges
+const handleValidationErrors = (req, res, next) => {
+  const errs = validationResult(req);
+  return errs.isEmpty() ? next() : fail(res, errs.array()[0].msg, 400);
 };
+
+const parseRequiredJudges = (val, fb = 3) => {
+  if (val === undefined || val === null || val === '') return { valid: true, value: fb };
+  const n = Number(val);
+  return Number.isInteger(n) && n >= 1 && n <= 10 ? { valid: true, value: n } : { valid: false, value: null };
+};
+
+module.exports = { handleValidationErrors, parseRequiredJudges };
