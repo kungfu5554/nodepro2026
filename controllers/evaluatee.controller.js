@@ -1,54 +1,64 @@
 // controllers/evaluatee.controller.js
 const { pool } = require('../config/database');
 const { formatUserPayload } = require('./auth.controller');
+const { ok, fail } = require('../utils/response');
 
-// Retrieve candidate metrics, current self scores, submission status, department approval status, and multi-judge reviews
 async function getMyEvaluationSheet(req, res, next) {
   try {
     const teacherCitizenId = req.user.citizenId;
     const periodId = parseInt(req.query.periodId || 1, 10);
 
-    // 0. Get latest user profile & department approval status
     const [userRows] = await pool.query('SELECT * FROM users WHERE citizen_id = ? LIMIT 1', [teacherCitizenId]);
     const latestUser = userRows.length > 0 ? formatUserPayload(userRows[0]) : null;
+    const requiredJudges = latestUser ? latestUser.requiredJudges : 3;
 
-    // 1. Get active period
     const [periods] = await pool.query('SELECT * FROM evaluation_periods WHERE id = ?', [periodId]);
     const period = periods[0] || null;
 
-    // 2. Get metrics for this period
     const [metrics] = await pool.query(`
-      SELECT id, period_id AS periodId, title, description, weight, eval_type AS evalType, evidence_type AS evidenceType
-      FROM metrics
-      WHERE period_id = ?
-      ORDER BY id ASC
+      SELECT
+        m.id,
+        m.period_id AS periodId,
+        m.category_id AS categoryId,
+        mc.name AS categoryName,
+        mc.sort_order AS categorySortOrder,
+        m.title,
+        m.description,
+        m.weight,
+        m.eval_type AS evalType,
+        m.evidence_type AS evidenceType
+      FROM metrics m
+      LEFT JOIN metric_categories mc ON m.category_id = mc.id
+      WHERE m.period_id = ?
+      ORDER BY COALESCE(mc.sort_order, 9999) ASC, m.id ASC
     `, [periodId]);
 
-    // 3. Get existing self evaluations
     const [selfScores] = await pool.query(`
       SELECT metric_id AS metricId, self_score AS selfScore, teacher_comment AS teacherComment, evidence_url AS evidenceUrl, evidence_original_name AS evidenceOriginalName
       FROM self_evaluations
       WHERE period_id = ? AND teacher_citizen_id = ?
     `, [periodId, teacherCitizenId]);
 
-    // 4. Get teacher submission status
     const [submissions] = await pool.query(`
       SELECT status, submitted_at AS submittedAt
       FROM teacher_submissions
       WHERE period_id = ? AND teacher_citizen_id = ?
     `, [periodId, teacherCitizenId]);
 
-    const submissionStatus = submissions.length > 0
-      ? submissions[0].status
-      : (selfScores.length > 0 ? 'SUBMITTED' : 'DRAFT');
+    const submissionStatus = submissions.length > 0 ? submissions[0].status : 'DRAFT';
     const submittedAt = submissions.length > 0 ? submissions[0].submittedAt : null;
 
-    // 5. Calculate progress percentage
     const totalMetrics = metrics.length;
-    const completedCount = selfScores.length;
-    const progress = totalMetrics > 0 ? Math.min(100, Math.round((completedCount / totalMetrics) * 100)) : 0;
+    const progress = totalMetrics > 0 ? Math.min(100, Math.round((selfScores.length / totalMetrics) * 100)) : 0;
 
-    // 6. Get all judge evaluations for this candidate in this period
+    // Count claimed judges (claimed, submitted, or evaluated)
+    const [[{ claimedJudgesCount }]] = await pool.query(`
+      SELECT COUNT(DISTINCT judge_citizen_id) AS claimedJudgesCount
+      FROM assignments
+      WHERE period_id = ? AND teacher_citizen_id = ? AND status IN ('CLAIMED', 'SUBMITTED', 'EVALUATED')
+    `, [periodId, teacherCitizenId]);
+
+    // Fetch evaluated judge rows + batch-load metric scores (avoids N+1 queries)
     const [judgeRows] = await pool.query(`
       SELECT 
         a.id AS assignmentId,
@@ -56,7 +66,6 @@ async function getMyEvaluationSheet(req, res, next) {
         u_j.name AS judgeName, 
         u_j.position AS judgePosition,
         COALESCE(a.role_in_board, 'กรรมการผู้ประเมิน') AS roleInBoard,
-        a.status AS assignmentStatus,
         es.total_score AS totalScore, 
         es.overall_feedback AS overallFeedback, 
         es.judge_signature AS judgeSignature,
@@ -68,31 +77,39 @@ async function getMyEvaluationSheet(req, res, next) {
       ORDER BY a.id ASC
     `, [periodId, teacherCitizenId]);
 
-    // 7. For each judge, retrieve their metric-level scores
-    const judgeEvaluations = [];
+    const scoresByAssignment = new Map();
+    if (judgeRows.length > 0) {
+      const assignmentIds = judgeRows.map(j => j.assignmentId);
+      const [allJudgeScores] = await pool.query(`
+        SELECT assignment_id AS assignmentId, metric_id AS metricId, judge_score AS judgeScore
+        FROM judge_evaluations
+        WHERE assignment_id IN (?)
+      `, [assignmentIds]);
+
+      for (const row of allJudgeScores) {
+        if (!scoresByAssignment.has(row.assignmentId)) {
+          scoresByAssignment.set(row.assignmentId, []);
+        }
+        scoresByAssignment.get(row.assignmentId).push(row);
+      }
+    }
+
     const metricTotals = {};
     const metricJudgeCounts = {};
     let sumTotalScores = 0;
 
-    for (const j of judgeRows) {
-      const [scores] = await pool.query(`
-        SELECT metric_id AS metricId, judge_score AS judgeScore
-        FROM judge_evaluations
-        WHERE assignment_id = ?
-      `, [j.assignmentId]);
-
+    const judgeEvaluations = judgeRows.map(j => {
       const metricScoreMap = {};
-      scores.forEach(s => {
+      for (const s of (scoresByAssignment.get(j.assignmentId) || [])) {
         const val = parseFloat(s.judgeScore) || 0;
         metricScoreMap[s.metricId] = val.toFixed(2);
         metricTotals[s.metricId] = (metricTotals[s.metricId] || 0) + val;
         metricJudgeCounts[s.metricId] = (metricJudgeCounts[s.metricId] || 0) + 1;
-      });
-
+      }
       const numTotal = parseFloat(j.totalScore) || 0;
       sumTotalScores += numTotal;
 
-      judgeEvaluations.push({
+      return {
         assignmentId: j.assignmentId,
         judgeCitizenId: j.judgeCitizenId,
         judgeName: j.judgeName,
@@ -103,38 +120,47 @@ async function getMyEvaluationSheet(req, res, next) {
         judgeSignature: j.judgeSignature,
         submittedAt: j.submittedAt,
         metricScores: metricScoreMap
-      });
-    }
+      };
+    });
 
-    // Consolidated metrics averages
     const metricAverages = {};
+    const metricJudgeProgress = {};
+    const reqJudgesNum = Math.max(1, Number(requiredJudges) || 3);
     metrics.forEach(m => {
-      const count = metricJudgeCounts[m.id] || 0;
+      const count = Number(metricJudgeCounts[m.id] || 0);
       metricAverages[m.id] = count > 0 ? (metricTotals[m.id] / count).toFixed(2) : null;
+      metricJudgeProgress[m.id] = {
+        evaluatedCount: count,
+        claimedCount: Number(claimedJudgesCount) || 0,
+        requiredJudges: reqJudgesNum,
+        percent: Math.min(100, Math.round((count / reqJudgesNum) * 100))
+      };
     });
 
     const averageTotalScore = judgeEvaluations.length > 0
       ? (sumTotalScores / judgeEvaluations.length).toFixed(2)
       : null;
 
-    res.status(200).json({
-      status: 'success',
-      message: 'Evaluation sheet retrieved.',
-      data: {
-        userProfile: latestUser,
-        period,
-        metrics,
-        selfScores,
-        submissionStatus,
-        submittedAt,
-        progress,
-        judgeFeedback: judgeEvaluations.length > 0 ? judgeEvaluations[0] : null,
-        judgeEvaluations,
-        consolidatedSummary: {
-          averageTotalScore,
-          judgeCount: judgeEvaluations.length,
-          metricAverages
-        }
+    return ok(res, 'Evaluation sheet retrieved.', {
+      userProfile: latestUser,
+      period,
+      metrics,
+      selfScores,
+      submissionStatus,
+      submittedAt,
+      progress,
+      requiredJudges,
+      claimedJudgesCount: Number(claimedJudgesCount) || 0,
+      judgeFeedback: judgeEvaluations.length > 0 ? judgeEvaluations[0] : null,
+      judgeEvaluations,
+      consolidatedSummary: {
+        averageTotalScore,
+        judgeCount: judgeEvaluations.length,
+        requiredJudges,
+        claimedJudgesCount: Number(claimedJudgesCount) || 0,
+        metricAverages,
+        metricJudgeCounts,
+        metricJudgeProgress
       }
     });
   } catch (error) {
@@ -142,7 +168,6 @@ async function getMyEvaluationSheet(req, res, next) {
   }
 }
 
-// Save or update candidate self evaluations (with department approval check, duplicate-submit lock, and edit-reset of judge scores)
 async function saveSelfEvaluations(req, res, next) {
   const conn = await pool.getConnection();
   try {
@@ -151,57 +176,34 @@ async function saveSelfEvaluations(req, res, next) {
 
     if (!scores || !Array.isArray(scores) || scores.length === 0) {
       conn.release();
-      return res.status(400).json({
-        status: 'error',
-        message: 'กรุณากรอกข้อมูลการประเมินตนเองอย่างน้อย 1 ตัวชี้วัด',
-        data: null
-      });
+      return fail(res, 'กรุณากรอกข้อมูลการประเมินตนเองอย่างน้อย 1 ตัวชี้วัด', 400);
     }
 
-    // 1. Check user's department approval status
     const [users] = await conn.query(
-      'SELECT department, dept_status, requested_department, dept_reject_reason FROM users WHERE citizen_id = ? LIMIT 1',
+      'SELECT department, dept_status, requested_department FROM users WHERE citizen_id = ? LIMIT 1',
       [teacherCitizenId]
     );
     if (users.length === 0) {
       conn.release();
-      return res.status(404).json({
-        status: 'error',
-        message: 'ไม่พบข้อมูลผู้ใช้งาน',
-        data: null
-      });
+      return fail(res, 'ไม่พบข้อมูลผู้ใช้งาน', 404);
     }
 
     const userRow = users[0];
     if (userRow.dept_status === 'PENDING') {
       conn.release();
-      return res.status(403).json({
-        status: 'error',
-        message: `ไม่สามารถส่งข้อมูลให้กรรมการได้ เนื่องจากสาขาวิชา "${userRow.requested_department || ''}" อยู่ระหว่างรอการอนุมัติจากฝ่ายบุคลากร (HR)`,
-        data: null
-      });
+      return fail(res, `ไม่สามารถส่งข้อมูลให้กรรมการได้ เนื่องจากสาขาวิชา "${userRow.requested_department || ''}" อยู่ระหว่างรอการอนุมัติจากฝ่ายบุคลากร (HR)`, 403);
     }
     if (userRow.dept_status === 'REJECTED' || !userRow.department) {
       conn.release();
-      return res.status(403).json({
-        status: 'error',
-        message: 'ไม่สามารถส่งข้อมูลให้กรรมการได้ กรุณาเลือกสาขาวิชาที่ได้รับอนุมัติก่อนส่งแบบประเมิน',
-        data: null
-      });
+      return fail(res, 'ไม่สามารถส่งข้อมูลให้กรรมการได้ กรุณาเลือกสาขาวิชาที่ได้รับอนุมัติก่อนส่งแบบประเมิน', 403);
     }
 
-    // 2. Check if evaluation period is open
     const [periods] = await conn.query('SELECT is_open FROM evaluation_periods WHERE id = ?', [periodId]);
     if (periods.length === 0 || !periods[0].is_open) {
       conn.release();
-      return res.status(403).json({
-        status: 'error',
-        message: 'รอบการประเมินนี้ปิดการรับข้อมูลแล้ว ไม่สามารถบันทึกหรือแก้ไขได้',
-        data: null
-      });
+      return fail(res, 'รอบการประเมินนี้ปิดการรับข้อมูลแล้ว ไม่สามารถบันทึกหรือแก้ไขได้', 403);
     }
 
-    // 3. Check if already submitted -> enforce lock unless isEditConfirm === true
     const [existingSubs] = await conn.query(
       'SELECT status FROM teacher_submissions WHERE period_id = ? AND teacher_citizen_id = ?',
       [periodId, teacherCitizenId]
@@ -210,26 +212,17 @@ async function saveSelfEvaluations(req, res, next) {
 
     if (alreadySubmitted && !isEditConfirm) {
       conn.release();
-      return res.status(400).json({
-        status: 'error',
-        message: 'ท่านได้ส่งข้อมูลแบบประเมินไปแล้ว ไม่สามารถส่งซ้ำได้ กรุณากดปุ่ม "ขอแก้ไขข้อมูล" หากต้องการแก้ไขแบบประเมิน',
-        data: null
-      });
+      return fail(res, 'ท่านได้ส่งข้อมูลแบบประเมินไปแล้ว ไม่สามารถส่งซ้ำได้ กรุณากดปุ่ม "ขอแก้ไขข้อมูล" หากต้องการแก้ไขแบบประเมิน', 400);
     }
 
     await conn.beginTransaction();
 
-    // 4. Insert or update each metric self evaluation
     for (const item of scores) {
       const { metricId, selfScore, teacherComment, comment, evidenceUrl, evidenceOriginalName } = item;
       if (!metricId || selfScore === undefined || selfScore === null || String(selfScore).trim() === '') {
         await conn.rollback();
         conn.release();
-        return res.status(400).json({
-          status: 'error',
-          message: 'กรุณาเลือกระดับคะแนนประเมินตนเองให้ครบทุกตัวชี้วัดก่อนส่งข้อมูล',
-          data: null
-        });
+        return fail(res, 'กรุณาเลือกระดับคะแนนประเมินตนเองให้ครบทุกตัวชี้วัดก่อนส่งข้อมูล', 400);
       }
       const finalComment = teacherComment !== undefined ? teacherComment : (comment !== undefined ? comment : null);
 
@@ -244,7 +237,6 @@ async function saveSelfEvaluations(req, res, next) {
       `, [periodId, teacherCitizenId, metricId, String(selfScore), finalComment, evidenceUrl || null, evidenceOriginalName || null]);
     }
 
-    // 5. Record submission state in teacher_submissions
     await conn.query(`
       INSERT INTO teacher_submissions (period_id, teacher_citizen_id, status, submitted_at)
       VALUES (?, ?, 'SUBMITTED', CURRENT_TIMESTAMP)
@@ -253,7 +245,6 @@ async function saveSelfEvaluations(req, res, next) {
         submitted_at = CURRENT_TIMESTAMP
     `, [periodId, teacherCitizenId]);
 
-    // 6. If editing an already-submitted evaluation, WIPE all initial judge evaluations & reset assignments to SUBMITTED
     let wipedJudgeEvaluationsCount = 0;
     if (alreadySubmitted && isEditConfirm) {
       const [[{ evalCount }]] = await conn.query(
@@ -274,16 +265,16 @@ async function saveSelfEvaluations(req, res, next) {
         WHERE a.period_id = ? AND a.teacher_citizen_id = ?
       `, [periodId, teacherCitizenId]);
 
+      // Reset claimed/evaluated judges back to CLAIMED so they re-evaluate the updated sheet
       await conn.query(`
         UPDATE assignments
-        SET status = 'SUBMITTED', updated_at = CURRENT_TIMESTAMP
-        WHERE period_id = ? AND teacher_citizen_id = ?
+        SET status = 'CLAIMED', updated_at = CURRENT_TIMESTAMP
+        WHERE period_id = ? AND teacher_citizen_id = ? AND status IN ('EVALUATED', 'SUBMITTED')
       `, [periodId, teacherCitizenId]);
     } else {
-      // First-time submission: upgrade any PENDING assignments to SUBMITTED
       await conn.query(`
         UPDATE assignments
-        SET status = 'SUBMITTED', updated_at = CURRENT_TIMESTAMP
+        SET status = 'CLAIMED', updated_at = CURRENT_TIMESTAMP
         WHERE period_id = ? AND teacher_citizen_id = ? AND status = 'PENDING'
       `, [periodId, teacherCitizenId]);
     }
@@ -291,18 +282,18 @@ async function saveSelfEvaluations(req, res, next) {
     await conn.commit();
     conn.release();
 
-    res.status(200).json({
-      status: 'success',
-      message: alreadySubmitted
+    return ok(
+      res,
+      alreadySubmitted
         ? 'บันทึกการแก้ไขข้อมูลเรียบร้อยแล้ว ผลการประเมินเดิมจากกรรมการถูกรีเซ็ตเพื่อรอการตรวจประเมินใหม่'
         : 'บันทึกและส่งผลการประเมินตนเองเรียบร้อยแล้ว',
-      data: {
+      {
         submissionStatus: 'SUBMITTED',
         submittedAt: new Date().toISOString(),
         wasEditedReset: alreadySubmitted,
         wipedJudgeEvaluationsCount
       }
-    });
+    );
   } catch (error) {
     await conn.rollback();
     conn.release();
@@ -310,7 +301,6 @@ async function saveSelfEvaluations(req, res, next) {
   }
 }
 
-// Update candidate personal information (legacy alias)
 async function updateProfile(req, res, next) {
   try {
     const teacherCitizenId = req.user.citizenId;
@@ -325,11 +315,7 @@ async function updateProfile(req, res, next) {
       WHERE citizen_id = ?
     `, [name, department, position, signatureUrl, teacherCitizenId]);
 
-    res.status(200).json({
-      status: 'success',
-      message: 'Profile updated successfully.',
-      data: null
-    });
+    return ok(res, 'Profile updated successfully.');
   } catch (error) {
     next(error);
   }

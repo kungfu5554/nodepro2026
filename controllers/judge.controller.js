@@ -1,44 +1,23 @@
 // controllers/judge.controller.js
 const { pool } = require('../config/database');
+const { ok, fail } = require('../utils/response');
 
-// Get assigned candidates for logged-in judge
-// Judges see approved-department teachers in their assigned department(s), with submission and grading statuses
+// Get candidates visible to the logged-in judge:
+// 1. Candidate must have approved department and SUBMITTED their self-evaluation first.
+// 2. Candidate belongs to a department assigned to this judge for the period (or already claimed by this judge).
+// 3. Candidate is hidden from other judges once claimedJudgesCount >= requiredJudges.
 async function getAssignedEvaluatees(req, res, next) {
   try {
     const judgeCitizenId = req.user.citizenId;
     const periodId = parseInt(req.query.periodId || 1, 10);
 
-    // 1. Check departments assigned to this judge in this period
-    let [deptRows] = await pool.query(`
+    const [deptRows] = await pool.query(`
       SELECT DISTINCT department_name, role_in_board
       FROM department_judges
       WHERE judge_citizen_id = ? AND period_id = ?
     `, [judgeCitizenId, periodId]);
 
-    // Fallback: if no period-specific rows yet, check judge's standing department assignments
-    if (deptRows.length === 0) {
-      [deptRows] = await pool.query(`
-        SELECT DISTINCT department_name, role_in_board
-        FROM department_judges
-        WHERE judge_citizen_id = ?
-      `, [judgeCitizenId]);
-    }
-
-    let assignedDepts = deptRows.map(r => r.department_name);
-
-    // Fallback: check if judge's own user department matches an official department
-    if (assignedDepts.length === 0) {
-      const [judgeUser] = await pool.query(`
-        SELECT d.name
-        FROM users u
-        JOIN departments d ON d.name = u.department
-        WHERE u.citizen_id = ?
-        LIMIT 1
-      `, [judgeCitizenId]);
-      if (judgeUser.length > 0) {
-        assignedDepts = [judgeUser[0].name];
-      }
-    }
+    const assignedDepts = deptRows.map(r => r.department_name);
 
     let query = `
       SELECT 
@@ -46,11 +25,13 @@ async function getAssignedEvaluatees(req, res, next) {
         u.name AS teacherName,
         u.department,
         u.position,
+        COALESCE(u.required_judges, 3) AS requiredJudges,
         COALESCE(dj.role_in_board, a.role_in_board, 'กรรมการผู้ประเมิน') AS roleInBoard,
-        COALESCE(ts.status, 'PENDING') AS submissionStatus,
+        ts.status AS submissionStatus,
         ts.submitted_at AS submittedAt,
         a.id AS assignmentId,
-        COALESCE(a.status, 'PENDING') AS myStatus,
+        a.status AS myAssignmentStatus,
+        a.claimed_at AS claimedAt,
         es.total_score AS totalScore,
         es.overall_feedback AS overallFeedback,
         (
@@ -58,13 +39,20 @@ async function getAssignedEvaluatees(req, res, next) {
           FROM assignments a2
           WHERE a2.teacher_citizen_id = u.citizen_id 
             AND a2.period_id = ?
-            AND a2.status = 'EVALUATED'
+            AND a2.status IN ('CLAIMED', 'SUBMITTED', 'EVALUATED')
+        ) AS claimedJudgesCount,
+        (
+          SELECT COUNT(DISTINCT a3.judge_citizen_id)
+          FROM assignments a3
+          WHERE a3.teacher_citizen_id = u.citizen_id 
+            AND a3.period_id = ?
+            AND a3.status = 'EVALUATED'
         ) AS totalJudgesEvaluated
       FROM users u
+      INNER JOIN teacher_submissions ts 
+        ON ts.teacher_citizen_id = u.citizen_id AND ts.period_id = ? AND ts.status = 'SUBMITTED'
       LEFT JOIN department_judges dj 
         ON dj.department_name = u.department AND dj.judge_citizen_id = ? AND dj.period_id = ?
-      LEFT JOIN teacher_submissions ts 
-        ON ts.teacher_citizen_id = u.citizen_id AND ts.period_id = ?
       LEFT JOIN assignments a 
         ON a.teacher_citizen_id = u.citizen_id AND a.judge_citizen_id = ? AND a.period_id = ?
       LEFT JOIN evaluation_summaries es 
@@ -73,7 +61,7 @@ async function getAssignedEvaluatees(req, res, next) {
         AND u.dept_status = 'APPROVED'
         AND u.department IS NOT NULL
     `;
-    const params = [periodId, judgeCitizenId, periodId, periodId, judgeCitizenId, periodId];
+    const params = [periodId, periodId, periodId, judgeCitizenId, periodId, judgeCitizenId, periodId];
 
     if (assignedDepts.length > 0) {
       query += ' AND (u.department IN (?) OR a.id IS NOT NULL)';
@@ -82,112 +70,203 @@ async function getAssignedEvaluatees(req, res, next) {
       query += ' AND a.id IS NOT NULL';
     }
 
-    query += ' ORDER BY u.department ASC, u.name ASC';
+    // Show if this judge already claimed/evaluated OR if slots are still available
+    query += `
+      HAVING (a.id IS NOT NULL AND myAssignmentStatus IN ('CLAIMED', 'SUBMITTED', 'EVALUATED'))
+          OR claimedJudgesCount < requiredJudges
+      ORDER BY (a.id IS NOT NULL) DESC, u.department ASC, u.name ASC
+    `;
 
     const [rows] = await pool.query(query, params);
 
-    // Normalize candidate status for frontend
     const candidates = rows.map(r => {
-      let displayStatus = 'PENDING';
-      if (r.myStatus === 'EVALUATED' && r.submissionStatus === 'SUBMITTED') {
-        displayStatus = 'EVALUATED';
-      } else if (r.submissionStatus === 'SUBMITTED') {
-        displayStatus = 'SUBMITTED';
-      }
+      const isClaimedByMe = Boolean(r.assignmentId) && ['CLAIMED', 'SUBMITTED', 'EVALUATED'].includes(r.myAssignmentStatus);
+      const myEvaluationCompleted = r.myAssignmentStatus === 'EVALUATED';
+      const displayStatus = myEvaluationCompleted ? 'EVALUATED' : (isClaimedByMe ? 'CLAIMED' : 'AVAILABLE');
 
       return {
         ...r,
+        requiredJudges: Number(r.requiredJudges) || 3,
+        claimedJudgesCount: Number(r.claimedJudgesCount) || 0,
+        totalJudgesEvaluated: Number(r.totalJudgesEvaluated) || 0,
         judgeName: req.user.name,
         status: displayStatus,
-        myEvaluationCompleted: displayStatus === 'EVALUATED',
-        isSubmittedByTeacher: r.submissionStatus === 'SUBMITTED'
+        isClaimedByMe,
+        canUnclaim: isClaimedByMe && !myEvaluationCompleted,
+        myEvaluationCompleted,
+        isSubmittedByTeacher: true
       };
     });
 
-    res.status(200).json({
-      status: 'success',
-      message: 'Assigned candidates retrieved.',
-      data: candidates
-    });
+    return ok(res, 'Assigned candidates retrieved.', candidates);
   } catch (error) {
     next(error);
   }
 }
 
-// Initialize candidate assignment when judge starts grading
-async function initCandidateAssignment(req, res, next) {
+// Judge claims an evaluatee before grading (concurrency-safe with FOR UPDATE)
+async function claimCandidate(req, res, next) {
+  const conn = await pool.getConnection();
   try {
     const judgeCitizenId = req.user.citizenId;
     const { teacherCitizenId, periodId = 1 } = req.body;
 
     if (!teacherCitizenId) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'กรุณาระบุรหัสผู้รับการประเมิน',
-        data: null
-      });
+      conn.release();
+      return fail(res, 'กรุณาระบุรหัสผู้รับการประเมิน', 400);
+    }
+    if (teacherCitizenId === judgeCitizenId) {
+      conn.release();
+      return fail(res, 'ไม่สามารถกดรับประเมินตนเองได้', 400);
     }
 
-    // Verify teacher exists and has approved department
-    const [teacherRows] = await pool.query(
-      'SELECT department, dept_status FROM users WHERE citizen_id = ? AND role = ? LIMIT 1',
+    await conn.beginTransaction();
+
+    // Lock teacher row to serialize concurrent claim requests for the same evaluatee
+    const [teacherRows] = await conn.query(
+      'SELECT citizen_id, department, dept_status, COALESCE(required_judges, 3) AS requiredJudges FROM users WHERE citizen_id = ? AND role = ? FOR UPDATE',
       [teacherCitizenId, 'teacher']
     );
     if (teacherRows.length === 0 || teacherRows[0].dept_status !== 'APPROVED') {
-      return res.status(403).json({
-        status: 'error',
-        message: 'ผู้รับการประเมินยังไม่ได้รับอนุมัติสังกัดสาขาวิชา',
-        data: null
-      });
+      await conn.rollback();
+      conn.release();
+      return fail(res, 'ผู้รับการประเมินยังไม่ได้รับอนุมัติสังกัดสาขาวิชา', 403);
+    }
+    const teacher = teacherRows[0];
+
+    const [periods] = await conn.query('SELECT is_open FROM evaluation_periods WHERE id = ?', [periodId]);
+    if (periods.length === 0 || !periods[0].is_open) {
+      await conn.rollback();
+      conn.release();
+      return fail(res, 'รอบการประเมินนี้ปิดระบบแล้ว ไม่สามารถกดรับการประเมินได้', 403);
     }
 
-    // Determine judge role in board for candidate's department
-    const [deptJudge] = await pool.query(`
-      SELECT dj.role_in_board 
-      FROM users u
-      JOIN department_judges dj ON dj.department_name = u.department AND dj.period_id = ?
-      WHERE u.citizen_id = ? AND dj.judge_citizen_id = ?
-      LIMIT 1
-    `, [periodId, teacherCitizenId, judgeCitizenId]);
-    const roleInBoard = deptJudge.length > 0 ? deptJudge[0].role_in_board : 'กรรมการผู้ประเมิน';
-
-    // Check candidate submission status
-    const [subs] = await pool.query(
-      'SELECT status FROM teacher_submissions WHERE period_id = ? AND teacher_citizen_id = ?',
+    // Teacher must submit self-evaluation first
+    const [subs] = await conn.query(
+      "SELECT status FROM teacher_submissions WHERE period_id = ? AND teacher_citizen_id = ? AND status = 'SUBMITTED'",
       [periodId, teacherCitizenId]
     );
-    const initialStatus = (subs.length > 0 && subs[0].status === 'SUBMITTED') ? 'SUBMITTED' : 'PENDING';
+    if (subs.length === 0) {
+      await conn.rollback();
+      conn.release();
+      return fail(res, 'ผู้รับการประเมินยังไม่ได้ส่งแบบประเมินตนเอง', 400);
+    }
 
-    const [existing] = await pool.query(
+    // Check existing assignment for this judge
+    const [existing] = await conn.query(
       'SELECT id, status FROM assignments WHERE period_id = ? AND teacher_citizen_id = ? AND judge_citizen_id = ?',
       [periodId, teacherCitizenId, judgeCitizenId]
     );
 
+    if (existing.length > 0 && ['CLAIMED', 'SUBMITTED', 'EVALUATED'].includes(existing[0].status)) {
+      await conn.commit();
+      conn.release();
+      return ok(res, 'ท่านได้รับผู้รับการประเมินรายนี้ไว้แล้ว', { assignmentId: existing[0].id });
+    }
+
+    // Verify judge belongs to candidate's department for this period (unless legacy PENDING assignment exists)
+    const [deptJudge] = await conn.query(`
+      SELECT role_in_board
+      FROM department_judges
+      WHERE department_name = ? AND judge_citizen_id = ? AND period_id = ?
+      LIMIT 1
+    `, [teacher.department, judgeCitizenId, periodId]);
+
+    if (deptJudge.length === 0 && existing.length === 0) {
+      await conn.rollback();
+      conn.release();
+      return fail(res, 'ท่านไม่ได้รับแต่งตั้งให้เป็นกรรมการประจำสาขาวิชาของผู้รับการประเมินรายนี้', 403);
+    }
+
+    // Check remaining quota
+    const [[{ claimedCount }]] = await conn.query(`
+      SELECT COUNT(DISTINCT judge_citizen_id) AS claimedCount
+      FROM assignments
+      WHERE period_id = ? AND teacher_citizen_id = ? AND status IN ('CLAIMED', 'SUBMITTED', 'EVALUATED')
+    `, [periodId, teacherCitizenId]);
+
+    if (Number(claimedCount) >= Number(teacher.requiredJudges)) {
+      await conn.rollback();
+      conn.release();
+      return fail(res, `ผู้รับการประเมินรายนี้มีกรรมการกดรับครบ ${teacher.requiredJudges} ท่านแล้ว`, 409);
+    }
+
+    const roleInBoard = deptJudge.length > 0 ? deptJudge[0].role_in_board : 'กรรมการผู้ประเมิน';
     let assignmentId;
+
     if (existing.length > 0) {
       assignmentId = existing[0].id;
-      if (existing[0].status === 'PENDING' && initialStatus === 'SUBMITTED') {
-        await pool.query("UPDATE assignments SET status = 'SUBMITTED' WHERE id = ?", [assignmentId]);
-      }
+      await conn.query(
+        "UPDATE assignments SET status = 'CLAIMED', role_in_board = ?, claimed_at = CURRENT_TIMESTAMP WHERE id = ?",
+        [roleInBoard, assignmentId]
+      );
     } else {
-      const [inserted] = await pool.query(`
-        INSERT INTO assignments (period_id, teacher_citizen_id, judge_citizen_id, role_in_board, status)
-        VALUES (?, ?, ?, ?, ?)
-      `, [periodId, teacherCitizenId, judgeCitizenId, roleInBoard, initialStatus]);
+      const [inserted] = await conn.query(`
+        INSERT INTO assignments (period_id, teacher_citizen_id, judge_citizen_id, role_in_board, status, claimed_at)
+        VALUES (?, ?, ?, ?, 'CLAIMED', CURRENT_TIMESTAMP)
+      `, [periodId, teacherCitizenId, judgeCitizenId, roleInBoard]);
       assignmentId = inserted.insertId;
     }
 
-    res.status(200).json({
-      status: 'success',
-      message: 'Candidate assignment initialized.',
-      data: { assignmentId }
+    await conn.commit();
+    conn.release();
+
+    return ok(res, 'กดรับผู้รับการประเมินเรียบร้อยแล้ว ท่านสามารถเข้าตรวจประเมินได้ทันที', {
+      assignmentId,
+      claimedJudgesCount: Number(claimedCount) + 1,
+      requiredJudges: Number(teacher.requiredJudges)
     });
   } catch (error) {
+    await conn.rollback();
+    conn.release();
     next(error);
   }
 }
 
-// Get candidate metrics, evidence, self scores, teacher comments, and judge scores (for grading & PDF report)
+// Release a claimed candidate if not yet evaluated
+async function unclaimCandidate(req, res, next) {
+  const conn = await pool.getConnection();
+  try {
+    const { assignmentId } = req.params;
+    const judgeCitizenId = req.user.citizenId;
+
+    await conn.beginTransaction();
+
+    const [rows] = await conn.query(
+      'SELECT id, judge_citizen_id, status FROM assignments WHERE id = ? FOR UPDATE',
+      [assignmentId]
+    );
+    if (rows.length === 0) {
+      await conn.rollback();
+      conn.release();
+      return fail(res, 'ไม่พบข้อมูลการรับประเมินรายการนี้', 404);
+    }
+
+    const assignment = rows[0];
+    if (assignment.judge_citizen_id !== judgeCitizenId) {
+      await conn.rollback();
+      conn.release();
+      return fail(res, 'ท่านไม่มีสิทธิ์ยกเลิกการรับประเมินรายการนี้', 403);
+    }
+
+    if (assignment.status === 'EVALUATED') {
+      await conn.rollback();
+      conn.release();
+      return fail(res, 'ไม่สามารถยกเลิกการรับได้ เนื่องจากท่านได้บันทึกผลการประเมินไปแล้ว', 400);
+    }
+
+    await conn.query('DELETE FROM assignments WHERE id = ?', [assignmentId]);
+    await conn.commit();
+    conn.release();
+
+    return ok(res, 'ยกเลิกการรับและปล่อยสิทธิ์คืนให้กรรมการท่านอื่นเรียบร้อยแล้ว');
+  } catch (error) {
+    await conn.rollback();
+    conn.release();
+    next(error);
+  }
+}
+
 async function getCandidateDetailsForGrading(req, res, next) {
   try {
     const { assignmentId } = req.params;
@@ -204,6 +283,7 @@ async function getCandidateDetailsForGrading(req, res, next) {
         u_t.position,
         u_j.name AS judgeName,
         u_j.position AS judgePosition,
+        u_j.signature_url AS judgeProfileSignatureUrl,
         a.role_in_board AS roleInBoard,
         a.status
       FROM assignments a
@@ -214,34 +294,30 @@ async function getCandidateDetailsForGrading(req, res, next) {
     `, [assignmentId]);
 
     if (assignments.length === 0) {
-      return res.status(404).json({
-        status: 'error',
-        message: 'ไม่พบข้อมูลการมอบหมายการประเมิน',
-        data: null
-      });
+      return fail(res, 'ไม่พบข้อมูลการรับประเมิน กรุณากดรับผู้รับการประเมินก่อน', 404);
     }
 
     const assignment = assignments[0];
 
-    // Authorization: only assigned judge or admin/hr
-    if (req.user.role === 'judge' && assignment.judgeCitizenId !== req.user.citizenId) {
-      return res.status(403).json({
-        status: 'error',
-        message: 'ท่านไม่มีสิทธิ์เข้าถึงข้อมูลการประเมินรายการนี้',
-        data: null
-      });
+    if (req.user.role === 'judge') {
+      if (assignment.judgeCitizenId !== req.user.citizenId) {
+        return fail(res, 'ท่านไม่มีสิทธิ์เข้าถึงข้อมูลการประเมินรายการนี้', 403);
+      }
+      if (assignment.status === 'PENDING') {
+        return fail(res, 'กรุณากดรับผู้รับการประเมินก่อนเข้าตรวจให้คะแนน', 403);
+      }
     }
 
-    // Check teacher submission info
     const [subs] = await pool.query(
       'SELECT status, submitted_at AS submittedAt FROM teacher_submissions WHERE period_id = ? AND teacher_citizen_id = ?',
       [assignment.periodId, assignment.teacherCitizenId]
     );
 
-    // Fetch metrics along with candidate's self scores, comments, evidence, and judge scores
     const [metricRows] = await pool.query(`
       SELECT 
         m.id AS metricId,
+        m.category_id AS categoryId,
+        mc.name AS categoryName,
         m.title,
         m.description,
         m.weight,
@@ -253,37 +329,32 @@ async function getCandidateDetailsForGrading(req, res, next) {
         se.evidence_original_name AS evidenceOriginalName,
         je.judge_score AS existingJudgeScore
       FROM metrics m
+      LEFT JOIN metric_categories mc ON m.category_id = mc.id
       LEFT JOIN self_evaluations se 
         ON m.id = se.metric_id AND se.teacher_citizen_id = ? AND se.period_id = ?
       LEFT JOIN judge_evaluations je 
         ON m.id = je.metric_id AND je.assignment_id = ?
       WHERE m.period_id = ?
-      ORDER BY m.id ASC
+      ORDER BY COALESCE(mc.sort_order, 9999) ASC, m.id ASC
     `, [assignment.teacherCitizenId, assignment.periodId, assignment.id, assignment.periodId]);
 
-    // Fetch summary if already submitted
     const [summaries] = await pool.query(`
       SELECT total_score AS totalScore, overall_feedback AS overallFeedback, judge_signature AS judgeSignature, submitted_at AS submittedAt
       FROM evaluation_summaries
       WHERE assignment_id = ?
     `, [assignment.id]);
 
-    res.status(200).json({
-      status: 'success',
-      message: 'Grading details retrieved.',
-      data: {
-        assignment,
-        submission: subs.length > 0 ? subs[0] : null,
-        metrics: metricRows,
-        summary: summaries.length > 0 ? summaries[0] : null
-      }
+    return ok(res, 'Grading details retrieved.', {
+      assignment,
+      submission: subs.length > 0 ? subs[0] : null,
+      metrics: metricRows,
+      summary: summaries.length > 0 ? summaries[0] : null
     });
   } catch (error) {
     next(error);
   }
 }
 
-// Submit judge scores, overall feedback, and signature
 async function submitEvaluation(req, res, next) {
   const conn = await pool.getConnection();
   try {
@@ -292,57 +363,39 @@ async function submitEvaluation(req, res, next) {
 
     if (!scores || typeof scores !== 'object') {
       conn.release();
-      return res.status(400).json({
-        status: 'error',
-        message: 'กรุณาระบุคะแนนประเมินในแต่ละตัวชี้วัด',
-        data: null
-      });
+      return fail(res, 'กรุณาระบุคะแนนประเมินในแต่ละตัวชี้วัด', 400);
     }
 
     const [assignments] = await conn.query('SELECT * FROM assignments WHERE id = ?', [assignmentId]);
     if (assignments.length === 0) {
       conn.release();
-      return res.status(404).json({
-        status: 'error',
-        message: 'ไม่พบข้อมูลการมอบหมายการประเมิน',
-        data: null
-      });
+      return fail(res, 'ไม่พบข้อมูลการรับประเมิน กรุณากดรับผู้รับการประเมินก่อน', 404);
     }
 
     const assignment = assignments[0];
 
     if (req.user.role === 'judge' && assignment.judge_citizen_id !== req.user.citizenId) {
       conn.release();
-      return res.status(403).json({
-        status: 'error',
-        message: 'ท่านไม่ได้รับมอบหมายให้ประเมินผู้รับการประเมินรายนี้',
-        data: null
-      });
+      return fail(res, 'ท่านไม่ได้รับมอบหมายให้ประเมินผู้รับการประเมินรายนี้', 403);
+    }
+    if (assignment.status === 'PENDING') {
+      conn.release();
+      return fail(res, 'กรุณากดรับผู้รับการประเมินก่อนส่งผลการประเมิน', 403);
     }
 
-    // Verify period is open
     const [periods] = await conn.query('SELECT is_open FROM evaluation_periods WHERE id = ?', [assignment.period_id]);
     if (periods.length > 0 && !periods[0].is_open) {
       conn.release();
-      return res.status(403).json({
-        status: 'error',
-        message: 'รอบการประเมินนี้ปิดระบบแล้ว ไม่สามารถส่งผลประเมินได้',
-        data: null
-      });
+      return fail(res, 'รอบการประเมินนี้ปิดระบบแล้ว ไม่สามารถส่งผลประเมินได้', 403);
     }
 
-    // Verify evaluatee has approved department and has actually submitted their self-evaluation
     const [teacherCheck] = await conn.query(
       'SELECT dept_status FROM users WHERE citizen_id = ? LIMIT 1',
       [assignment.teacher_citizen_id]
     );
     if (teacherCheck.length === 0 || teacherCheck[0].dept_status !== 'APPROVED') {
       conn.release();
-      return res.status(403).json({
-        status: 'error',
-        message: 'ผู้รับการประเมินยังไม่ได้รับอนุมัติสาขาวิชาจากฝ่ายบุคลากร',
-        data: null
-      });
+      return fail(res, 'ผู้รับการประเมินยังไม่ได้รับอนุมัติสาขาวิชาจากฝ่ายบุคลากร', 403);
     }
 
     const [subs] = await conn.query(
@@ -351,14 +404,9 @@ async function submitEvaluation(req, res, next) {
     );
     if (subs.length === 0) {
       conn.release();
-      return res.status(400).json({
-        status: 'error',
-        message: 'ผู้รับการประเมินยังไม่ได้ส่งข้อมูลแบบประเมินตนเอง กรุณารอให้ผู้รับการประเมินส่งข้อมูลก่อน',
-        data: null
-      });
+      return fail(res, 'ผู้รับการประเมินยังไม่ได้ส่งข้อมูลแบบประเมินตนเอง กรุณารอให้ผู้รับการประเมินส่งข้อมูลก่อน', 400);
     }
 
-    // Get metrics to calculate weighted score
     const [metrics] = await conn.query('SELECT id, weight, eval_type FROM metrics WHERE period_id = ?', [assignment.period_id]);
     const metricMap = new Map(metrics.map(m => [m.id, m]));
 
@@ -372,12 +420,9 @@ async function submitEvaluation(req, res, next) {
       const metricDef = metricMap.get(metricId);
       if (!metricDef) continue;
 
-      let score = 0;
-      if (metricDef.eval_type === 'BOOLEAN') {
-        score = (rawScore === 'มี' || rawScore === 4 || rawScore === '4' || rawScore === '4.00' || rawScore === true) ? 4.00 : 0.00;
-      } else {
-        score = Math.min(4, Math.max(0, parseFloat(rawScore) || 0));
-      }
+      const score = metricDef.eval_type === 'BOOLEAN'
+        ? ((rawScore === 'มี' || rawScore === 4 || rawScore === '4' || rawScore === '4.00' || rawScore === true) ? 4.00 : 0.00)
+        : Math.min(4, Math.max(0, parseFloat(rawScore) || 0));
 
       const weight = metricDef.weight || 0;
 
@@ -387,11 +432,11 @@ async function submitEvaluation(req, res, next) {
         ON DUPLICATE KEY UPDATE judge_score = VALUES(judge_score)
       `, [assignmentId, metricId, score]);
 
-      totalWeightedScore += (score * weight);
+      totalWeightedScore += score * weight;
       totalWeight += weight;
     }
 
-    const finalScore = totalWeight > 0 ? (totalWeightedScore / totalWeight) : 0;
+    const finalScore = totalWeight > 0 ? totalWeightedScore / totalWeight : 0;
 
     await conn.query(`
       INSERT INTO evaluation_summaries (assignment_id, total_score, overall_feedback, judge_signature)
@@ -408,13 +453,9 @@ async function submitEvaluation(req, res, next) {
     await conn.commit();
     conn.release();
 
-    res.status(200).json({
-      status: 'success',
-      message: 'บันทึกและส่งผลการประเมินสำเร็จ',
-      data: {
-        assignmentId,
-        totalScore: finalScore.toFixed(2)
-      }
+    return ok(res, 'บันทึกและส่งผลการประเมินสำเร็จ', {
+      assignmentId,
+      totalScore: finalScore.toFixed(2)
     });
   } catch (error) {
     await conn.rollback();
@@ -425,7 +466,8 @@ async function submitEvaluation(req, res, next) {
 
 module.exports = {
   getAssignedEvaluatees,
-  initCandidateAssignment,
+  claimCandidate,
+  unclaimCandidate,
   getCandidateDetailsForGrading,
   submitEvaluation
 };
